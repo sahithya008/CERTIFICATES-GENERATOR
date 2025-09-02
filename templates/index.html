@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Bonafide Certificate Generator</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #570f0f;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+    }
+
+    .form-container {
+      background: rgb(255, 255, 255);
+      padding: 30px 40px;
+      border-radius: 12px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+      width: 400px;
+    }
+
+    h2 {
+      text-align: center;
+      margin-bottom: 20px;
+      color: #333;
+    }
+
+    label {
+      display: block;
+      margin-top: 15px;
+      font-weight: bold;
+      color: #444;
+    }
+
+    input {
+      width: 100%;
+      padding: 10px;
+      margin-top: 6px;
+      border: 1px solid #cfa8ff;
+      border-radius: 6px;
+      font-size: 14px;
+    }
+
+    button {
+      margin-top: 20px;
+      width: 100%;
+      padding: 12px;
+      background: #5f1075;
+      color: white;
+      font-size: 16px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: #1a5fb4;
+    }
+  </style>
+</head>
+<body>
+  <div class="form-container">
+    <h2>Bonafide Certificate Form</h2>
+    <form action="/generate" method="POST">
+      <label for="name">Student Name</label>
+      <input type="text" id="name" name="name" required>
+
+      <label for="parent_name">Parent's Name</label>
+      <input type="text" id="parent_name" name="parent_name" required>
+
+      <label for="hallticketno">Hall Ticket No</label>
+      <input type="text" id="hallticketno" name="hallticketno" required>
+
+      <label for="year_branch">Year & Branch</label>
+      <input type="text" id="year_branch" name="year & branch" required>
+
+      <label for="academic_year">Academic Year</label>
+      <input type="text" id="academic_year" name="academic_year" required>
+
+      <button type="submit">Generate Certificate</button>
+    </form>
+  </div>
+</body>
+</html>
