@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Admin Dashboard</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #1b7250;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            min-height: 100vh;
+        }
+
+        .container {
+            background: #f5f5f5;
+            margin-top: 40px;
+            padding: 30px 40px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            max-width: 1000px;
+            width: 100%;
+        }
+
+        h2 {
+            text-align: center;
+            color: #1d9a92;
+            margin-bottom: 25px;
+        }
+
+        label {
+            font-weight: bold;
+            margin-top: 10px;
+            display: block;
+            color: #333;
+        }
+
+        .checkbox-group {
+            margin: 15px 0;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            background: #fff;
+        }
+
+        .checkbox-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: normal;
+        }
+
+        button {
+            width: 100%;
+            padding: 10px;
+            margin-top: 12px;
+            border-radius: 6px;
+            border: none;
+            background: #5a2285;
+            color: white;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.3s ease;
+        }
+
+        button:hover {
+            background: #23dfcd;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 25px;
+        }
+
+        th,
+        td {
+            padding: 10px;
+            border: 1px solid #ddd;
+            text-align: center;
+        }
+
+        th {
+            background: #1d9a92;
+            color: white;
+        }
+
+        .links {
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        .file-link {
+            text-decoration: none;
+            color: #5a2285;
+            font-weight: bold;
+        }
+
+        .file-link:hover {
+            color: #23dfcd;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h2>📊 Admin Dashboard</h2>
+
+        <!-- Certificate Download Logs Table -->
+        <h3>Certificate Download Logs</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>Hall Ticket</th>
+                    <th>Certificate Type</th>
+                    <th>Downloaded At</th>
+
+                </tr>
+            </thead>
+            <tbody>
+                {% for log in logs %}
+                <tr>
+                    <td>{{ log.student_hallticket }}</td>
+                    <td>{{ log.certificate_type }}</td>
+                    <td>{{ log.downloaded_at.strftime('%d-%m-%Y %H:%M:%S') }}</td>
+
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="5">No downloads yet.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <!-- Clear Logs by Date -->
+        <h3>Clear Logs By Date</h3>
+        <form method="POST" action="/admin/clear_logs_by_date">
+            <label for="cutoff_date">Delete logs before:</label>
+            <input type="date" id="cutoff_date" name="cutoff_date" required>
+            <button type="submit">Clear Logs</button>
+        </form>
+
+        <div class="links">
+            <a href="/logout">🚪 Logout</a>
+        </div>
+    </div>
+</body>
+
+</html>

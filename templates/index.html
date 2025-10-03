@@ -1,87 +1,175 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
+
 <head>
-  <meta charset="UTF-8">
-  <title>Bonafide Certificate Generator</title>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      background: #570f0f;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      height: 100vh;
-      margin: 0;
-    }
+    <title>Certificate Generator</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #721b1b;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
 
-    .form-container {
-      background: rgb(255, 255, 255);
-      padding: 30px 40px;
-      border-radius: 12px;
-      box-shadow: 0 4px 10px rgba(0,0,0,0.15);
-      width: 400px;
-    }
+        .container {
+            background: rgb(245, 245, 245);
+            padding: 30px 40px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            max-width: 500px;
+            width: 100%;
+        }
 
-    h2 {
-      text-align: center;
-      margin-bottom: 20px;
-      color: #333;
-    }
+        h2 {
+            text-align: center;
+            color: #1d9a92;
+            margin-bottom: 25px;
+        }
 
-    label {
-      display: block;
-      margin-top: 15px;
-      font-weight: bold;
-      color: #444;
-    }
+        label {
+            font-weight: bold;
+            margin-top: 10px;
+            display: block;
+            color: #26949a;
+        }
 
-    input {
-      width: 100%;
-      padding: 10px;
-      margin-top: 6px;
-      border: 1px solid #cfa8ff;
-      border-radius: 6px;
-      font-size: 14px;
-    }
+        input,
+        button {
+            width: 100%;
+            padding: 10px;
+            margin-top: 8px;
+            margin-bottom: 18px;
+            border-radius: 6px;
+            border: 1px solid #ccc;
+            font-size: 14px;
+        }
 
-    button {
-      margin-top: 20px;
-      width: 100%;
-      padding: 12px;
-      background: #5f1075;
-      color: white;
-      font-size: 16px;
-      border: none;
-      border-radius: 6px;
-      cursor: pointer;
-    }
+        input:focus {
+            border-color: #7849a4;
+            outline: none;
+            box-shadow: 0 0 6px rgba(0, 102, 204, 0.3);
+        }
 
-    button:hover {
-      background: #1a5fb4;
-    }
-  </style>
+        button {
+            background: #5a2285;
+            color: white;
+            border: none;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.3s ease;
+        }
+
+        button:hover {
+            background: #23dfcd;
+        }
+
+        .footer {
+            margin-top: 10px;
+            font-size: 12px;
+            text-align: center;
+            color: #5b5858;
+        }
+
+        /* Checkbox styling */
+        .checkbox-group {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 10px;
+        }
+
+        .checkbox-column {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .checkbox-column label {
+            display: flex;
+            align-items: center;
+            font-size: 14px;
+            cursor: pointer;
+            color: #333;
+        }
+
+        .checkbox-column input[type="checkbox"] {
+            margin-right: 8px;
+        }
+
+        /* Admin link styling */
+        .admin-link-below {
+            text-align: center;
+            margin-top: 10px;
+        }
+
+        .admin-link-below a {
+            color: #5a2285;
+            font-weight: bold;
+            text-decoration: none;
+        }
+
+        .admin-link-below a:hover {
+            color: #23dfcd;
+        }
+    </style>
 </head>
+
 <body>
-  <div class="form-container">
-    <h2>Bonafide Certificate Form</h2>
-    <form action="/generate" method="POST">
-      <label for="name">Student Name</label>
-      <input type="text" id="name" name="name" required>
+    <div class="container">
+        <h2>🎓 Certificate Generator</h2>
+        <form method="POST" action="/generate">
+            <!-- Hall Ticket Input -->
+            <label for="hallticketno">Hall Ticket Number:</label>
+            <input type="text" id="hallticketno" name="hallticketno" placeholder="Enter Hall Ticket No." required>
 
-      <label for="parent_name">Parent's Name</label>
-      <input type="text" id="parent_name" name="parent_name" required>
+            <!-- Certificate Selection (Checkboxes) -->
+            <label>Select Certificates:</label>
+            <div class="checkbox-group">
+                <div class="checkbox-column">
+                    <label><input type="checkbox" name="cert_types" value="Bonafide"> Bonafide Certificate</label>
+                    <label><input type="checkbox" name="cert_types" value="Course Completion"> Course Completion</label>
+                    <label><input type="checkbox" name="cert_types" value="Custodium"> Custodium Certificate</label>
+                </div>
+                <div class="checkbox-column">
+                    <label><input type="checkbox" name="cert_types" value="Fee details for IT purpose"> Fee details
+                        (IT)</label>
+                    <label><input type="checkbox" name="cert_types" value="Fee structure for bank loan"> Fee structure
+                        (Loan)</label>
+                </div>
+            </div>
 
-      <label for="hallticketno">Hall Ticket No</label>
-      <input type="text" id="hallticketno" name="hallticketno" required>
+            <!-- Purpose (only for Custodium) -->
+            <div id="purposeDiv" style="display:none; margin-top:15px;">
+                <label for="purpose">Enter Purpose:</label>
+                <input type="text" id="purpose" name="purpose" placeholder="E.g. Educational Loan">
+            </div>
 
-      <label for="year_branch">Year & Branch</label>
-      <input type="text" id="year_branch" name="year & branch" required>
+            <button type="submit">Generate Certificate(s)</button>
 
-      <label for="academic_year">Academic Year</label>
-      <input type="text" id="academic_year" name="academic_year" required>
+            <!-- Admin login below the button -->
+            <div class="admin-link-below">
+                👩‍💼 <a href="/admin">Admin Login</a>
+            </div>
+        </form>
 
-      <button type="submit">Generate Certificate</button>
-    </form>
-  </div>
+        <div class="footer">
+            © 2025 SRITW | Certificate Portal
+        </div>
+    </div>
+
+    <script>
+        // Show purpose only when Custodium is checked
+        const checkboxes = document.querySelectorAll('input[name="cert_types"]');
+        checkboxes.forEach(cb => {
+            cb.addEventListener("change", () => {
+                const custodiumSelected = document.querySelector('input[value="Custodium"]').checked;
+                document.getElementById("purposeDiv").style.display = custodiumSelected ? "block" : "none";
+            });
+        });
+    </script>
 </body>
+
 </html>

@@ -1,0 +1,7 @@
+@app.route("/download_all", methods=["POST"])
+def download_all():
+    if not session.get("admin"):
+        return redirect(url_for("admin_login"))
+    
+    cert_type = request.form["admin_cert_type"]
+    ...
