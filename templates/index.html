@@ -74,7 +74,6 @@
             color: #5b5858;
         }
 
-        /* Checkbox styling */
         .checkbox-group {
             display: flex;
             justify-content: space-between;
@@ -99,7 +98,6 @@
             margin-right: 8px;
         }
 
-        /* Admin link styling */
         .admin-link-below {
             text-align: center;
             margin-top: 10px;
@@ -120,12 +118,12 @@
 <body>
     <div class="container">
         <h2>🎓 Certificate Generator</h2>
-        <form method="POST" action="/generate">
+        <form method="POST" action="/payment">
             <!-- Hall Ticket Input -->
             <label for="hallticketno">Hall Ticket Number:</label>
             <input type="text" id="hallticketno" name="hallticketno" placeholder="Enter Hall Ticket No." required>
 
-            <!-- Certificate Selection (Checkboxes) -->
+            <!-- Certificate Selection -->
             <label>Select Certificates:</label>
             <div class="checkbox-group">
                 <div class="checkbox-column">
@@ -134,6 +132,8 @@
                     <label><input type="checkbox" name="cert_types" value="Custodium"> Custodium Certificate</label>
                 </div>
                 <div class="checkbox-column">
+                    <label><input type="checkbox" name="cert_types" value="Bonafide (scholarship purpose)"> Bonafide
+                        Certificate [scholarship]</label>
                     <label><input type="checkbox" name="cert_types" value="Fee details for IT purpose"> Fee details
                         (IT)</label>
                     <label><input type="checkbox" name="cert_types" value="Fee structure for bank loan"> Fee structure
@@ -143,11 +143,11 @@
 
             <!-- Purpose (only for Custodium) -->
             <div id="purposeDiv" style="display:none; margin-top:15px;">
-                <label for="purpose">Enter Purpose:</label>
+                <label for="purpose">Enter Purpose(for custodium only):</label>
                 <input type="text" id="purpose" name="purpose" placeholder="E.g. Educational Loan">
             </div>
 
-            <button type="submit">Generate Certificate(s)</button>
+            <button type="submit">Proceed to Payment</button>
 
             <!-- Admin login below the button -->
             <div class="admin-link-below">
@@ -161,12 +161,26 @@
     </div>
 
     <script>
-        // Show purpose only when Custodium is checked
         const checkboxes = document.querySelectorAll('input[name="cert_types"]');
+        const purposeInput = document.getElementById('purpose');
+
         checkboxes.forEach(cb => {
             cb.addEventListener("change", () => {
                 const custodiumSelected = document.querySelector('input[value="Custodium"]').checked;
                 document.getElementById("purposeDiv").style.display = custodiumSelected ? "block" : "none";
+                purposeInput.required = custodiumSelected;
+
+                // Example: automatically deselect certificates that cannot be issued
+                // Replace with backend-validated unavailable certs if needed
+                const hallticket = document.getElementById('hallticketno').value.trim();
+                if (hallticket && hallticket.startsWith("X")) { // dummy condition
+                    const courseCompletionCheckbox = document.querySelector('input[value="Course Completion"]');
+                    courseCompletionCheckbox.checked = false;
+                    courseCompletionCheckbox.disabled = true;
+                } else {
+                    const courseCompletionCheckbox = document.querySelector('input[value="Course Completion"]');
+                    courseCompletionCheckbox.disabled = false;
+                }
             });
         });
     </script>

@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Download Complete</title>
+    <style>
+        body {
+            font-family: 'Poppins', sans-serif;
+            background: #f8f9fa;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+
+        .success-box {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+            padding: 40px;
+            border-radius: 14px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            max-width: 500px;
+        }
+
+        .success-box h2 {
+            color: #28a745;
+            margin-bottom: 20px;
+        }
+
+        .success-box p {
+            font-size: 16px;
+            margin-bottom: 15px;
+        }
+
+        .cert-list {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+        }
+
+        .home-btn {
+            background: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+            margin-top: 15px;
+        }
+
+        .home-btn:hover {
+            background: #0056b3;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="success-box">
+        <h2>✅ Certificates Downloaded Successfully!</h2>
+        <p><strong>Hall Ticket:</strong> {{ download_info.hallticket }}</p>
+        <p><strong>Certificates Generated:</strong> {{ download_info.cert_count }}</p>
+
+        <div class="cert-list">
+            <strong>Certificate Types:</strong>
+            <ul style="text-align: left; margin: 10px 0;">
+                {% for cert_type in download_info.cert_types %}
+                <li>{{ cert_type }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+
+        <p><strong>📁 Please check your Downloads folder for the certificate files.</strong></p>
+
+        <a href="{{ url_for('home') }}" class="home-btn">Generate More Certificates</a>
+    </div>
+</body>
+
+</html>

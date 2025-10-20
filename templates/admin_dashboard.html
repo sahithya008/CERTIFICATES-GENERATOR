@@ -1,151 +1,243 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin Dashboard</title>
     <style>
         body {
-            font-family: Arial, sans-serif;
-            background: #1b7250;
+            font-family: "Poppins", sans-serif;
+            background: #3b8793;
             margin: 0;
             padding: 0;
-            display: flex;
-            justify-content: center;
-            align-items: flex-start;
-            min-height: 100vh;
+        }
+
+        header {
+            background: #0e315f;
+            color: white;
+            padding: 20px;
+            text-align: center;
+            font-size: 1.6em;
+            letter-spacing: 1px;
+            position: relative;
+        }
+
+        .logout {
+            position: absolute;
+            right: 20px;
+            top: 20px;
+            background: #dc3545;
+            border: none;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: 0.3s;
+        }
+
+        .logout:hover {
+            background: #b52b38;
         }
 
         .container {
-            background: #f5f5f5;
-            margin-top: 40px;
-            padding: 30px 40px;
-            border-radius: 12px;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
-            max-width: 1000px;
-            width: 100%;
+            padding: 30px;
+        }
+
+        .filter-section {
+            margin-bottom: 28px;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            align-items: flex-end;
+            gap: 30px;
+        }
+
+        .bulk-download-block,
+        .clear-logs-block {
+            background: #eaf2ff;
+            padding: 16px 22px 12px 22px;
+            border-radius: 10px;
+            box-shadow: 0 1px 4px #ddd;
+        }
+
+        .bulk-download-block label {
+            font-weight: 500;
+            display: inline-block;
+            margin-bottom: 4px;
+        }
+
+        .bulk-download-block input[type="checkbox"] {
+            margin-right: 8px;
+        }
+
+        .bulk-download-btn,
+        .clear-btn {
+            background: #4caf50;
+            color: white;
+            border: none;
+            padding: 8px 17px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.3s;
+            margin-top: 8px;
+            font-size: 1em;
+        }
+
+        .bulk-download-btn:hover,
+        .clear-btn:hover {
+            background: #117a30;
+        }
+
+        .clear-btn {
+            background: #730eb7;
+            color: white;
+        }
+
+        .clear-btn:hover {
+            background: #9247a7;
         }
 
         h2 {
-            text-align: center;
-            color: #1d9a92;
-            margin-bottom: 25px;
-        }
-
-        label {
-            font-weight: bold;
-            margin-top: 10px;
-            display: block;
-            color: #333;
-        }
-
-        .checkbox-group {
-            margin: 15px 0;
-            padding: 10px;
-            border: 1px solid #ccc;
-            border-radius: 8px;
-            background: #fff;
-        }
-
-        .checkbox-group label {
-            display: block;
-            margin-bottom: 8px;
-            font-weight: normal;
-        }
-
-        button {
-            width: 100%;
-            padding: 10px;
-            margin-top: 12px;
-            border-radius: 6px;
-            border: none;
-            background: #5a2285;
-            color: white;
-            font-weight: bold;
-            cursor: pointer;
-            transition: background 0.3s ease;
-        }
-
-        button:hover {
-            background: #23dfcd;
+            color: #ffffff;
+            margin-bottom: 10px;
         }
 
         table {
             width: 100%;
             border-collapse: collapse;
-            margin-top: 25px;
+            background: white;
+            box-shadow: 0px 2px 8px rgba(0, 0, 0, 0.1);
+            border-radius: 10px;
+            overflow: hidden;
         }
 
         th,
         td {
-            padding: 10px;
-            border: 1px solid #ddd;
-            text-align: center;
+            padding: 12px 15px;
+            text-align: left;
         }
 
         th {
-            background: #1d9a92;
-            color: white;
+            background: #eaf2ff;
+            color: #333;
+            font-weight: 600;
         }
 
-        .links {
+        tr:nth-child(even) {
+            background-color: #f9fbff;
+        }
+
+        .proof-img {
+            width: 90px;
+            border-radius: 6px;
+            border: 1px solid #ddd;
+        }
+
+        .centered {
             text-align: center;
-            margin-top: 20px;
         }
 
-        .file-link {
-            text-decoration: none;
-            color: #5a2285;
-            font-weight: bold;
-        }
-
-        .file-link:hover {
-            color: #23dfcd;
+        .no-logs-msg {
+            padding: 20px;
+            color: #777;
+            text-align: center;
+            background: #fff8ee;
+            border-radius: 8px;
+            margin: 32px auto;
+            box-shadow: 0px 1px 3px #e5e5e5;
+            max-width: 600px;
         }
     </style>
 </head>
 
 <body>
-    <div class="container">
-        <h2>📊 Admin Dashboard</h2>
+    <header>
+        Admin Dashboard
+        <a href="{{ url_for('logout') }}"><button class="logout">Logout</button></a>
+    </header>
 
-        <!-- Certificate Download Logs Table -->
-        <h3>Certificate Download Logs</h3>
+    <div class="container">
+        <h2>Payment & Certificate Logs</h2>
+        <div class="filter-section">
+            <!-- Admin Bulk Download -->
+            <div class="bulk-download-block">
+                <form action="{{ url_for('download_all') }}" method="POST">
+                    <h3 style="margin-top: 0;">Bulk Download Certificates</h3>
+                    <label><input type="checkbox" name="admin_cert_types" value="all"> All Certificate Types</label><br>
+                    <label><input type="checkbox" name="admin_cert_types" value="Bonafide"> Bonafide</label><br>
+                    <label><input type="checkbox" name="admin_cert_types" value="Bonafide (scholarship purpose)">
+                        Bonafide Certificate[scholarship]</label><br>
+                    <label><input type="checkbox" name="admin_cert_types" value="Course Completion"> Course
+                        Completion</label><br>
+                    <label><input type="checkbox" name="admin_cert_types" value="Custodium"> Custodium</label><br>
+                    <label><input type="checkbox" name="admin_cert_types" value="Fee details for IT purpose"> Fee
+                        Details (IT)</label><br>
+                    <label><input type="checkbox" name="admin_cert_types" value="Fee structure for bank loan"> Fee
+                        Structure (Loan)</label><br>
+                    <button type="submit" class="bulk-download-btn">Download Selected</button>
+                </form>
+            </div>
+            <form method="POST" action="{{ url_for('admin_search') }}" style="margin-bottom:25px;">
+                <input type="text" name="search_hallticket" placeholder="Search Hall Ticket Number"
+                    value="{{ search_query if search_query else '' }}" required
+                    style="padding:8px; border-radius:4px; border:1px solid #aaa;">
+                <button type="submit"
+                    style="padding:8px 15px; background:#6d0d86; color:rgb(255, 255, 255); border:none; border-radius:4px; cursor:pointer;">Search🔍</button>
+                {% if is_search %}
+                <a href="{{ url_for('admin_dashboard') }}" style="margin-left:10px; color:#000204;">Clear</a>
+                {% endif %}
+            </form>
+
+            <!-- Clear logs -->
+            <div class="clear-logs-block">
+                <form action="{{ url_for('clear_logs_by_date') }}" method="POST">
+                    <label for="cutoff_date"><b>Clear logs before:</b></label>
+                    <input type="date" name="cutoff_date" required>
+                    <button class="clear-btn" type="submit">Clear Logs</button>
+                </form>
+            </div>
+        </div>
+
+        {% if logs %}
         <table>
             <thead>
                 <tr>
+                    <th>#</th>
                     <th>Hall Ticket</th>
                     <th>Certificate Type</th>
-                    <th>Downloaded At</th>
-
+                    <th>Transaction ID</th>
+                    <th>Payment Proof</th>
+                    <th>Generated At</th>
                 </tr>
             </thead>
             <tbody>
                 {% for log in logs %}
                 <tr>
+                    <td class="centered">{{ loop.index }}</td>
                     <td>{{ log.student_hallticket }}</td>
                     <td>{{ log.certificate_type }}</td>
-                    <td>{{ log.downloaded_at.strftime('%d-%m-%Y %H:%M:%S') }}</td>
-
-                </tr>
-                {% else %}
-                <tr>
-                    <td colspan="5">No downloads yet.</td>
+                    <td>{{ log.transaction_id if log.transaction_id else '-' }}</td>
+                    <td class="centered">
+                        {% if log.proof_filename %}
+                        <a href="{{ url_for('static', filename='uploads/' + log.proof_filename) }}" target="_blank">
+                            <img src="{{ url_for('static', filename='uploads/' + log.proof_filename) }}"
+                                class="proof-img" alt="Payment Proof">
+                        </a>
+                        {% else %}
+                        -
+                        {% endif %}
+                    </td>
+                    <td>{{ log.downloaded_at.strftime('%d-%m-%Y %H:%M') }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
-
-        <!-- Clear Logs by Date -->
-        <h3>Clear Logs By Date</h3>
-        <form method="POST" action="/admin/clear_logs_by_date">
-            <label for="cutoff_date">Delete logs before:</label>
-            <input type="date" id="cutoff_date" name="cutoff_date" required>
-            <button type="submit">Clear Logs</button>
-        </form>
-
-        <div class="links">
-            <a href="/logout">🚪 Logout</a>
+        {% else %}
+        <div class="no-logs-msg">
+            No certificates or payments logged yet.
         </div>
+        {% endif %}
     </div>
 </body>
 

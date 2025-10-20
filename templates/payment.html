@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Payment Verification</title>
+    <style>
+        body {
+            font-family: "Poppins", sans-serif;
+            background: #2d0271;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+
+        .payment-container {
+            background: rgb(194, 224, 241);
+            padding: 30px 40px;
+            border-radius: 15px;
+            box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);
+            width: 400px;
+            text-align: center;
+            position: relative;
+        }
+
+        h2 {
+            color: #020202;
+            margin-bottom: 10px;
+        }
+
+        .bill-box {
+            background: #fdfdfd;
+            border: 1px solid #274764;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+
+        .bill-item {
+            display: flex;
+            justify-content: space-between;
+            margin: 5px 0;
+        }
+
+        .total {
+            font-weight: bold;
+            font-size: 1.1em;
+            color: #8a468c;
+            border-top: 1px solid #5c1818;
+            padding-top: 8px;
+            margin-top: 8px;
+        }
+
+        img.qr {
+            width: 180px;
+            height: 180px;
+            margin: 10px 0;
+            border: 2px solid #000000;
+            border-radius: 10px;
+        }
+
+        input[type="text"],
+        input[type="file"] {
+            width: 100%;
+            padding: 10px;
+            margin: 8px 0 15px 0;
+            border: 1px solid #000000;
+            border-radius: 8px;
+        }
+
+        button {
+            background-color: #0f274a;
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            width: 100%;
+            font-size: 1em;
+            transition: background 0.3s;
+        }
+
+        button:hover {
+            background-color: #3e4c93;
+        }
+
+        .note {
+            font-size: 0.9em;
+            color: #555;
+            margin-top: 5px;
+        }
+
+        /* Loader Styles */
+        .loading-overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(255, 255, 255, 0.95);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            border-radius: 15px;
+        }
+
+        .spinner {
+            border: 5px solid #e0e0e0;
+            border-top: 5px solid #1a73e8;
+            border-radius: 50%;
+            width: 60px;
+            height: 60px;
+            animation: spin 1s linear infinite;
+            margin-bottom: 15px;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        .loading-text {
+            color: #333;
+            font-weight: 600;
+            font-size: 1.1em;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="payment-container">
+        <!-- Extra vertical space above the title -->
+        <div style="height: 2.5em;"></div>
+        <h2>Certificate Payment</h2>
+        <p>Hall Ticket: <strong>{{ hallticketno }}</strong></p>
+
+        <div class="bill-box">
+            {% for cert in cert_types %}
+            <div class="bill-item">
+                <span>{{ cert }}</span>
+                <span>₹100</span>
+            </div>
+            {% endfor %}
+            <div class="bill-item total">
+                <span>Total</span>
+                <span>₹{{ total_amount }}</span>
+            </div>
+        </div>
+
+        <p><strong>Scan to Pay</strong></p>
+        <img src="{{ url_for('static', filename='qr.png') }}" alt="QR Code" class="qr">
+
+        <form id="paymentForm" action="{{ url_for('verify_payment') }}" method="POST" enctype="multipart/form-data">
+            <input type="text" name="transaction_id" placeholder="Enter Transaction ID" required>
+            <input type="file" name="payment_proof" accept="image/*" required>
+            <button type="submit">Submit Payment &amp; Generate Certificates</button>
+        </form>
+
+        <p class="note">💡 Each certificate costs ₹100. Please upload your UPI transaction screenshot and ID after
+            payment.</p>
+
+        <!-- Loading Overlay -->
+        <div class="loading-overlay" id="loadingOverlay">
+            <div class="spinner"></div>
+            <div class="loading-text">Payment Successful<br>Generating your certificate...</div>
+        </div>
+    </div>
+
+    <script>
+        const form = document.getElementById("paymentForm");
+        const overlay = document.getElementById("loadingOverlay");
+
+        form.addEventListener("submit", function () {
+            overlay.style.display = "flex";
+            setTimeout(() => {
+                overlay.style.display = "none";
+                alert("✅ Certificates downloaded!\n\nPlease check your Downloads folder.");
+                // Redirect to home page after alert
+                window.location.href = "{{ url_for('home') }}";
+            }, 3000);
+        });
+    </script>
+</body>
+
+</html>
