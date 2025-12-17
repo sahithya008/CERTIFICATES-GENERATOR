@@ -240,7 +240,8 @@
                         -
                         {% endif %}
                     </td>
-                    <td>{{ log.downloaded_at.strftime('%d-%m-%Y %H:%M') }}</td>
+                    <td>{{ log.downloaded_at.replace(tzinfo=utc).astimezone(ist).strftime('%d-%m-%Y %I:%M %p') }}</td>
+
                 </tr>
                 {% endfor %}
             </tbody>

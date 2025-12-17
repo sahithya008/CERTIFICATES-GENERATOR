@@ -5,7 +5,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.lib.units import cm
 from io import StringIO, BytesIO
-from datetime import datetime
+from datetime import timezone, timedelta
 import datetime
 import os
 import csv
@@ -126,7 +126,23 @@ def append_audit_log(event_type, data):
         if not file_exists or os.path.getsize(AUDIT_LOG_FILE) == 0:
             writer.writeheader()
         
-        row = {key: data.get(key, "") for key in fieldnames}
+        row = {key: "" for key in fieldnames}
+
+        row.update({
+            "hallticket": data.get("hallticket") or data.get("hall_ticket", ""),
+            "name": data.get("name", ""),
+            "year": data.get("year", ""),
+            "branch": data.get("branch", ""),
+            "certificate": data.get("certificate") or data.get("certificate_type", ""),
+            "purpose": data.get("purpose", ""),
+            "transaction_id": data.get("transaction_id", ""),
+            "status": data.get("status", ""),
+            "actor": data.get("actor", ""),
+            "reference": data.get("reference", ""),
+            "ip": data.get("ip", ""),
+            "proof_filename": data.get("proof_filename", "")
+        })
+
         row["log_id"] = str(uuid.uuid4())
         row["date"] = date_str
         row["time"] = time_str
@@ -136,48 +152,48 @@ def append_audit_log(event_type, data):
 
 @app.route("/admin/export_certificates_csv")
 def export_certificates_csv():
-    output = BytesIO()
-    writer = csv.writer(output)
-    
-    # Header with separate date & time
-    export_headers = [
+    text_buffer = StringIO()
+    writer = csv.writer(text_buffer)
+
+    # CSV headers
+    writer.writerow([
         "date",
         "time",
         "hallticket",
-        "name",
-        "year",
-        "branch",
         "certificate",
-        "purpose",
         "transaction_id",
         "proof_filename"
-    ]
-    writer.writerow(export_headers)
-    
-    if os.path.exists(AUDIT_LOG_FILE):
-        with open(AUDIT_LOG_FILE, newline='', encoding='utf-8') as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                if row.get("event_type") == "CERTIFICATE_GENERATED":
-                    writer.writerow([
-                        row.get("date", ""),
-                        row.get("time", ""),
-                        row.get("hallticket", ""),
-                        row.get("name", ""),
-                        row.get("year", ""),
-                        row.get("branch", ""),
-                        row.get("certificate", ""),
-                        row.get("purpose", ""),
-                        row.get("transaction_id", ""),
-                        row.get("proof_filename", "")
-                    ])
-    output.seek(0)
+    ])
+
+    # 🔒 PERMANENT SOURCE: DATABASE
+    logs = CertificateDownload.query.order_by(
+        CertificateDownload.downloaded_at.asc()
+    ).all()
+
+    for log in logs:
+        ist = timezone(timedelta(hours=5, minutes=30))
+        dt = (log.downloaded_at or datetime.datetime.utcnow()).replace(tzinfo=timezone.utc).astimezone(ist)
+
+        writer.writerow([
+            dt.date().isoformat(),
+            dt.time().strftime("%H:%M:%S"),
+            log.student_hallticket,
+            log.certificate_type,
+            log.transaction_id or "",
+            log.proof_filename or ""
+        ])
+
+    byte_buffer = BytesIO(text_buffer.getvalue().encode("utf-8"))
+    byte_buffer.seek(0)
+
     return send_file(
-        output,
+        byte_buffer,
         as_attachment=True,
         download_name="certificate_report.csv",
         mimetype="text/csv"
     )
+
+
 
     
 # Database model
@@ -364,7 +380,18 @@ def admin_dashboard():
     if not session.get("admin"):
         return redirect(url_for("admin_login"))
     logs = CertificateDownload.query.order_by(CertificateDownload.downloaded_at.desc()).all()
-    return render_template("admin_dashboard.html", logs=logs)
+    utc = timezone.utc
+    ist = timezone(timedelta(hours=5, minutes=30))
+
+    return render_template(
+        "admin_dashboard.html",
+        logs=logs,
+        ist=ist,
+        utc=utc,
+        search_query=None,
+        is_search=False
+    )
+
 
 @app.route("/logout")
 def logout():
@@ -467,8 +494,13 @@ def verify_payment():
         flash("❌ No eligible certificates were generated.", "danger")
         return redirect(url_for("home"))
 
-    for cert_type, _ in generated:
-        save_student_record(student, hallticketno, cert_type, purpose, transaction_id)
+    save_student_record(
+        student,
+        hallticketno,
+        ", ".join(cert_types),   # store all certs once
+        purpose,
+        transaction_id
+    )
 
 
     # Log downloads
