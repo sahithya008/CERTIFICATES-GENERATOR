@@ -5,8 +5,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.lib.units import cm
 from io import StringIO, BytesIO
-from datetime import timezone, timedelta
-import datetime
+from datetime import datetime, timezone, timedelta
 import os
 import csv
 import uuid
@@ -17,6 +16,12 @@ from flask_sqlalchemy import SQLAlchemy
 
 app = Flask(__name__)
 app.secret_key = "yoursecretkey"
+
+def utc_to_ist(utc_dt):
+    """Convert UTC datetime to IST (UTC+5:30)."""
+    if not utc_dt:
+        return ""
+    return (utc_dt + timedelta(hours=5, minutes=30)).strftime("%Y-%m-%d %H:%M:%S")
 
 # SQLAlchemy setup
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///downloads.db'
@@ -52,7 +57,7 @@ def save_student_record(student, hallticket, cert_type, purpose, transaction_id)
             writer.writeheader()
 
         writer.writerow({
-            "timestamp": datetime.datetime.utcnow().isoformat(),
+            "timestamp": datetime.utcnow().isoformat(),
             "hallticket": hallticket,
             "name": student["NAME"].values[0],
             "branch": student["BRANCH"].values[0],
@@ -117,7 +122,7 @@ def append_audit_log(event_type, data):
     
     file_exists = os.path.isfile(AUDIT_LOG_FILE)
     
-    now = datetime.datetime.utcnow()
+    now = datetime.utcnow()
     date_str = now.date().isoformat()
     time_str = now.time().strftime("%H:%M:%S")
     
@@ -172,7 +177,7 @@ def export_certificates_csv():
 
     for log in logs:
         ist = timezone(timedelta(hours=5, minutes=30))
-        dt = (log.downloaded_at or datetime.datetime.utcnow()).replace(tzinfo=timezone.utc).astimezone(ist)
+        dt = (log.downloaded_at or datetime.utcnow()).replace(tzinfo=timezone.utc).astimezone(ist)
 
         writer.writerow([
             dt.date().isoformat(),
@@ -197,13 +202,23 @@ def export_certificates_csv():
 
     
 # Database model
+IST_OFFSET = timedelta(hours=5, minutes=30)
+class CertificateAudit(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    hallticket = db.Column(db.String(20))
+    certificate_type = db.Column(db.String(100))
+    transaction_id = db.Column(db.String(100))
+    proof_filename = db.Column(db.String(200))
+    created_at = db.Column(db.DateTime, default=lambda: datetime.utcnow() + IST_OFFSET)
+
+
 class CertificateDownload(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     student_hallticket = db.Column(db.String(50), nullable=False)
     certificate_type = db.Column(db.String(100), nullable=False)
     transaction_id = db.Column(db.String(100), nullable=True)
     proof_filename = db.Column(db.String(200), nullable=True)
-    downloaded_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
+    downloaded_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 # Database initialization
 with app.app_context():
@@ -231,6 +246,38 @@ def is_cert_eligible(cert_type: str, status: str, purpose: str) -> bool:
 def home():
     return render_template("index.html")
 
+
+@app.route("/admin/view_db")
+def view_db():
+    if not session.get("admin"):
+        return redirect(url_for("admin_login"))
+
+    # Define IST timezone
+    ist = timezone(timedelta(hours=5, minutes=30))
+    now_ist = datetime.now(timezone.utc).astimezone(ist)
+    yesterday_ist = now_ist - timedelta(days=1)
+
+    # Fetch logs from DB
+    logs = CertificateDownload.query.order_by(CertificateDownload.downloaded_at.desc()).all()
+
+    # Convert timestamps and mark new entries
+    formatted_logs = []
+    for log in logs:
+        downloaded_ist = log.downloaded_at.astimezone(ist)
+        is_new = downloaded_ist >= yesterday_ist
+
+        formatted_logs.append({
+            "id": log.id,
+            "hallticket": log.student_hallticket,
+            "certificate_type": log.certificate_type,
+            "transaction_id": log.transaction_id or "",
+            "proof_filename": log.proof_filename or "",
+            "downloaded_at": downloaded_ist.strftime("%Y-%m-%d %H:%M:%S"),
+            "is_new": is_new
+        })
+
+    return render_template("admin_db_view.html", logs=formatted_logs)
+
 @app.route("/check_status/<hallticket>")
 def check_status(hallticket):
     hallticket = str(hallticket).strip().upper()
@@ -252,6 +299,27 @@ def admin_login():
         return redirect(url_for("admin_login"))
     return render_template("admin_login.html")
 
+@app.route("/admin/view_audit")
+def view_audit():
+    if not session.get("admin"):
+        return redirect(url_for("admin_login"))
+
+    audits = CertificateAudit.query.order_by(CertificateAudit.created_at.desc()).all()
+
+    # Convert UTC timestamps to IST
+    audit_list = []
+    for a in audits:
+        audit_list.append({
+            "hallticket": a.hallticket,
+            "certificate_type": a.certificate_type,
+            "transaction_id": a.transaction_id,
+            "proof_filename": a.proof_filename or "-",
+            "created_at": utc_to_ist(a.created_at)
+        })
+
+    return render_template("admin_view_audit.html", audits=audit_list)
+
+
 @app.route("/admin/download_audit_log")
 def download_audit_log():
     if not session.get("admin"):
@@ -271,7 +339,7 @@ def download_audit_log():
     )
 
 
-@app.route("/download_all", methods=["POST"])
+@app.route("/admin/download_all", methods=["POST"])
 def download_all():
     if not session.get("admin"):
         return redirect(url_for("admin_login"))
@@ -290,33 +358,25 @@ def download_all():
             "Fee structure for bank loan"
         ]
 
-    generated_files = []  # 🔑 store (filename, buffer)
+    generated_files = []
 
     for _, student_row in students.iterrows():
         hallticketno = str(student_row["HALLTICKET"]).strip()
         student_df = pd.DataFrame([student_row])
-
         status = str(student_row.get("STATUS", "")).strip().upper()
 
         for cert_type in cert_types:
-            # Eligibility check (IMPORTANT)
             if not is_cert_eligible(cert_type, status, purpose="Admin Bulk Download"):
                 continue
 
-            buf = create_certificate(
-                cert_type,
-                student_df,
-                hallticketno,
-                purpose="Admin Bulk Download"
-            )
-
+            buf = create_certificate(cert_type, student_df, hallticketno, purpose="Admin Bulk Download")
             if not buf:
                 continue
 
             filename = f"{cert_type}_{hallticketno}.pdf"
             generated_files.append((filename, buf))
 
-            # Audit log
+            # Append to logs
             append_audit_log("ADMIN_BULK_GENERATE", {
                 "hall_ticket": hallticketno,
                 "name": student_row.get("NAME"),
@@ -329,9 +389,15 @@ def download_all():
                 "ip": request.remote_addr
             })
 
-            # DB log
+            # Log in database
             db.session.add(CertificateDownload(
                 student_hallticket=hallticketno,
+                certificate_type=cert_type,
+                transaction_id="ADMIN",
+                proof_filename=""
+            ))
+            db.session.add(CertificateAudit(
+                hallticket=hallticketno,
                 certificate_type=cert_type,
                 transaction_id="ADMIN",
                 proof_filename=""
@@ -343,7 +409,7 @@ def download_all():
 
     db.session.commit()
 
-    # 🔥 Create ZIP
+    # Create ZIP
     zip_buffer = BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
         for filename, buf in generated_files:
@@ -351,12 +417,8 @@ def download_all():
             zf.writestr(filename, buf.read())
 
     zip_buffer.seek(0)
-    return send_file(
-        zip_buffer,
-        as_attachment=True,
-        download_name="bulk_certificates.zip",
-        mimetype="application/zip"
-    )
+    return send_file(zip_buffer, as_attachment=True, download_name="bulk_certificates.zip", mimetype="application/zip")
+
 
 
 @app.route("/admin/search", methods=["POST"])
@@ -452,12 +514,14 @@ def verify_payment():
     cert_types = session.get("cert_types", [])
     hallticketno = session.get("hallticketno")
     purpose = session.get("purpose", "")
+    
     if not hallticketno or not cert_types:
         flash("❌ Session expired or no certificates selected.", "danger")
         return redirect(url_for("home"))
 
     transaction_id = request.form.get("transaction_id", "").strip()
     proof_file = request.files.get("payment_proof")
+    
     if not transaction_id or not proof_file or proof_file.filename == "":
         flash("❌ Please upload both Transaction ID and Payment Proof.", "warning")
         return redirect(url_for("payment_page"))
@@ -482,6 +546,67 @@ def verify_payment():
         "reference": "PAYMENT_SUCCESS",
         "ip": request.remote_addr
     })
+
+    # Generate certificates
+    generated = []
+    for cert_type in cert_types:
+        buf = create_certificate(cert_type, student, hallticketno, purpose)
+        if buf:
+            generated.append((cert_type, buf))
+
+    if not generated:
+        flash("❌ No eligible certificates were generated.", "danger")
+        return redirect(url_for("home"))
+
+    save_student_record(student, hallticketno, ", ".join(cert_types), purpose, transaction_id)
+
+    # Log in both CertificateDownload and permanent CertificateAudit
+    for cert_type, _ in generated:
+        db.session.add(CertificateDownload(
+            student_hallticket=hallticketno,
+            certificate_type=cert_type,
+            transaction_id=transaction_id,
+            proof_filename=filename
+        ))
+        db.session.add(CertificateAudit(
+            hallticket=hallticketno,
+            certificate_type=cert_type,
+            transaction_id=transaction_id,
+            proof_filename=filename
+        ))
+        append_audit_log("CERTIFICATE_GENERATED", {
+            "hall_ticket": hallticketno,
+            "name": student["NAME"].values[0],
+            "certificate_type": cert_type,
+            "purpose": purpose,
+            "transaction_id": transaction_id,
+            "status": student["STATUS"].values[0],
+            "actor": "SYSTEM",
+            "reference": f"{cert_type}_{hallticketno}.pdf",
+            "ip": request.remote_addr
+        })
+
+    db.session.commit()
+
+    # Clear session
+    session.pop("cert_types", None)
+    session.pop("hallticketno", None)
+    session.pop("purpose", None)
+
+    # Send files
+    if len(generated) == 1:
+        cert_type, buffer = generated[0]
+        buffer.seek(0)
+        return send_file(buffer, as_attachment=True, download_name=f"{cert_type}_{hallticketno}.pdf", mimetype="application/pdf")
+    
+    zip_buffer = BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w") as zf:
+        for cert_type, buffer in generated:
+            buffer.seek(0)
+            zf.writestr(f"{cert_type}_{hallticketno}.pdf", buffer.getvalue())
+    zip_buffer.seek(0)
+    return send_file(zip_buffer, as_attachment=True, download_name=f"{hallticketno}_certificates.zip", mimetype="application/zip")
+
 
 
     # Generate certificates
@@ -511,6 +636,14 @@ def verify_payment():
             transaction_id=transaction_id,
             proof_filename=filename
         ))
+        
+        db.session.add(CertificateAudit(
+            hallticket=hallticketno,
+            certificate_type=cert_type,
+            transaction_id=transaction_id,
+            proof_filename=filename
+        ))
+        
         append_audit_log("CERTIFICATE_GENERATED", {
             "hall_ticket": hallticketno,
             "name": student["NAME"].values[0],
@@ -551,7 +684,7 @@ def clear_logs_by_date():
 
     if cutoff_date_str:
         try:
-            cutoff = datetime.datetime.strptime(cutoff_date_str, "%Y-%m-%d")
+            cutoff = datetime.strptime(cutoff_date_str, "%Y-%m-%d")
             deleted = CertificateDownload.query.filter(
                 CertificateDownload.downloaded_at < cutoff
             ).delete()
@@ -1109,7 +1242,7 @@ def create_certificate(cert_type, student, hallticketno, purpose=""):
         canvas.drawString(text_x, text_y, "ORIGINAL")
         if os.path.exists("logo.png"):
             canvas.drawImage("logo.png", margin + (width - 2*margin - 8*cm)/2, height - margin - logo_height - 10, width=8*cm, height=5*cm, preserveAspectRatio=True, mask='auto')
-            today = datetime.datetime.now().strftime("%d-%m-%Y")
+            today = datetime.now().strftime("%d-%m-%Y")
             canvas.setFont("Helvetica-Bold", 11)
             canvas.setFillColor(colors.black)
             date_y = height - margin - logo_height - 19
@@ -1130,7 +1263,7 @@ def create_certificate(cert_type, student, hallticketno, purpose=""):
         canvas.drawString(text_x, text_y, "DUPLICATE")
         if os.path.exists("logo.png"):
             canvas.drawImage("logo.png", margin + (width - 2*margin - 8*cm)/2, height - margin - logo_height - 10, width=8*cm, height=5*cm, preserveAspectRatio=True, mask='auto')
-            today = datetime.datetime.now().strftime("%d-%m-%Y")
+            today = datetime.now().strftime("%d-%m-%Y")
             canvas.setFont("Helvetica-Bold", 11)
             canvas.setFillColor(colors.black)
             date_y = height - margin - logo_height - 19

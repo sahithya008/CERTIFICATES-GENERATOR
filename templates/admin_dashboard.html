@@ -148,6 +148,26 @@
             box-shadow: 0px 1px 3px #e5e5e5;
             max-width: 600px;
         }
+
+        .button {
+            background: #4b0960;
+            color: white;
+            border: none;
+            padding: 8px 17px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.3s;
+            margin-top: 8px;
+            font-size: 1em;
+        }
+
+        .button:hover {
+            background-color: #6d27aa;
+            transform: scale(1.05);
+        }
+    </style>
+
+
     </style>
 </head>
 
@@ -155,22 +175,43 @@
     <header>
         Admin Dashboard
         <a href="{{ url_for('logout') }}"><button class="logout">Logout</button></a>
+
     </header>
 
     <div class="container">
         <h2>Payment & Certificate Logs</h2>
         <div class="filter-section">
             <div class="bulk-download-block">
-                <h3 style="margin-top:0;">Certificate CSV Export</h3>
-                <p style="font-size:0.9em;">
-                    Download certificate usage data for external records.
-                </p>
-                <a href="{{ url_for('export_certificates_csv') }}">
-                    <button class="bulk-download-btn" type="button">
-                        Download CSV
-                    </button>
-                </a>
+
+                <div class="export-section">
+                    <h3>Certificate CSV Export</h3>
+                    <p>
+                        Download certificate usage data for external records.
+                    </p>
+                    <a href="{{ url_for('export_certificates_csv') }}" class="btn-link">
+                        <button class="bulk-download-btn" type="button">
+                            Download CSV
+                        </button>
+                    </a>
+                </div>
+
+                <hr class="section-divider">
+
+                <div class="export-section">
+                    <h3>Permanent DB Records</h3>
+                    <p>
+                        View permanent certificate history stored for audit purposes.
+                    </p>
+                    <a href="{{ url_for('view_db') }}" class="btn-link">
+                        <button class="bulk-download-btn" type="button">
+                            View Database
+                        </button>
+                    </a>
+                </div>
+
             </div>
+
+
 
             <!-- Admin Bulk Download -->
             <div class="bulk-download-block">
