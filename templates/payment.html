@@ -154,7 +154,7 @@
         </div>
 
         <p><strong>Scan to Pay</strong></p>
-        <img src="{{ url_for('static', filename='qr.png') }}" alt="QR Code" class="qr">
+        <img src="{{ url_for('static', filename='qrcode.png') }}" alt="QR Code" class="qr">
 
         <form id="paymentForm" action="{{ url_for('verify_payment') }}" method="POST" enctype="multipart/form-data">
             <input type="text" name="transaction_id" placeholder="Enter Transaction ID" required>

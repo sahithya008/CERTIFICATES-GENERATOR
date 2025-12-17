@@ -160,6 +160,18 @@
     <div class="container">
         <h2>Payment & Certificate Logs</h2>
         <div class="filter-section">
+            <div class="bulk-download-block">
+                <h3 style="margin-top:0;">Certificate CSV Export</h3>
+                <p style="font-size:0.9em;">
+                    Download certificate usage data for external records.
+                </p>
+                <a href="{{ url_for('export_certificates_csv') }}">
+                    <button class="bulk-download-btn" type="button">
+                        Download CSV
+                    </button>
+                </a>
+            </div>
+
             <!-- Admin Bulk Download -->
             <div class="bulk-download-block">
                 <form action="{{ url_for('download_all') }}" method="POST">

@@ -4,9 +4,12 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.lib.units import cm
-from io import BytesIO
+from io import StringIO, BytesIO
+from datetime import datetime
 import datetime
 import os
+import csv
+import uuid
 import pandas as pd
 import html
 import zipfile
@@ -28,10 +31,43 @@ os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
 ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = "admin123"
 
+STUDENT_RECORDS_FILE = "logs/student_records.csv"
+def save_student_record(student, hallticket, cert_type, purpose, transaction_id):
+    file_exists = os.path.isfile(STUDENT_RECORDS_FILE)
+
+    with open(STUDENT_RECORDS_FILE, "a", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=[
+            "timestamp",
+            "hallticket",
+            "name",
+            "branch",
+            "year",
+            "status",
+            "certificate_type",
+            "purpose",
+            "transaction_id"
+        ])
+
+        if not file_exists:
+            writer.writeheader()
+
+        writer.writerow({
+            "timestamp": datetime.datetime.utcnow().isoformat(),
+            "hallticket": hallticket,
+            "name": student["NAME"].values[0],
+            "branch": student["BRANCH"].values[0],
+            "year": student["YEAR"].values[0],
+            "status": student["STATUS"].values[0],
+            "certificate_type": cert_type,
+            "purpose": purpose,
+            "transaction_id": transaction_id
+        })
+
 # Excel setup
 EXCEL_FILE = "student_certificates.xlsx"
 students = pd.read_excel(EXCEL_FILE, engine="openpyxl")
 students.columns = [c.strip() for c in students.columns]
+students["HALLTICKET"] = students["HALLTICKET"].astype(str).str.strip().str.upper()
 
 def parse_fee(x):
     if pd.isna(x):
@@ -47,10 +83,103 @@ def parse_fee(x):
     except Exception:
         return None
 
-for col in ["TUITION FEE", "COLLEGE FEE", "NBA FEE", "JNTUH FEE", "HOSTEL FEE","BUS FEE", "TOTAL"]:
+for col in ["TUITION FEE", "COLLEGE FEE", "NBA FEE", "JNTUH FEE", "HOSTEL FEE", "BUS FEE", "TOTAL"]:
     if col in students.columns:
         students[col] = students[col].apply(parse_fee)
 
+# Audit logging
+
+AUDIT_LOG_FILE = "logs/certificate_audit_log.csv"
+os.makedirs("logs", exist_ok=True)
+
+def append_audit_log(event_type, data):
+    """
+    Writes an append-only audit log row with separate date and time.
+    """
+    fieldnames = [
+        "log_id",
+        "date",
+        "time",
+        "event_type",
+        "hallticket",
+        "name",
+        "year",
+        "branch",
+        "certificate",
+        "purpose",
+        "transaction_id",
+        "status",
+        "actor",
+        "reference",
+        "ip",
+        "proof_filename"
+    ]
+    
+    file_exists = os.path.isfile(AUDIT_LOG_FILE)
+    
+    now = datetime.datetime.utcnow()
+    date_str = now.date().isoformat()
+    time_str = now.time().strftime("%H:%M:%S")
+    
+    with open(AUDIT_LOG_FILE, mode="a", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        if not file_exists or os.path.getsize(AUDIT_LOG_FILE) == 0:
+            writer.writeheader()
+        
+        row = {key: data.get(key, "") for key in fieldnames}
+        row["log_id"] = str(uuid.uuid4())
+        row["date"] = date_str
+        row["time"] = time_str
+        
+        writer.writerow(row)
+
+
+@app.route("/admin/export_certificates_csv")
+def export_certificates_csv():
+    output = BytesIO()
+    writer = csv.writer(output)
+    
+    # Header with separate date & time
+    export_headers = [
+        "date",
+        "time",
+        "hallticket",
+        "name",
+        "year",
+        "branch",
+        "certificate",
+        "purpose",
+        "transaction_id",
+        "proof_filename"
+    ]
+    writer.writerow(export_headers)
+    
+    if os.path.exists(AUDIT_LOG_FILE):
+        with open(AUDIT_LOG_FILE, newline='', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                if row.get("event_type") == "CERTIFICATE_GENERATED":
+                    writer.writerow([
+                        row.get("date", ""),
+                        row.get("time", ""),
+                        row.get("hallticket", ""),
+                        row.get("name", ""),
+                        row.get("year", ""),
+                        row.get("branch", ""),
+                        row.get("certificate", ""),
+                        row.get("purpose", ""),
+                        row.get("transaction_id", ""),
+                        row.get("proof_filename", "")
+                    ])
+    output.seek(0)
+    return send_file(
+        output,
+        as_attachment=True,
+        download_name="certificate_report.csv",
+        mimetype="text/csv"
+    )
+
+    
 # Database model
 class CertificateDownload(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -60,69 +189,40 @@ class CertificateDownload(db.Model):
     proof_filename = db.Column(db.String(200), nullable=True)
     downloaded_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
 
-# Database initialization with migration
+# Database initialization
 with app.app_context():
-    try:
-        db.create_all()
-        CertificateDownload.query.first()
-        print("Database schema is up to date!")
-    except Exception as e:
-        print(f"Database migration needed: {e}")
-        print("Recreating database with new schema...")
-        db.drop_all()
-        db.create_all()
-        print("Database migration completed successfully!")
+    db.create_all()
 
+# Certificate eligibility
 def is_cert_eligible(cert_type: str, status: str, purpose: str) -> bool:
     if status is None:
         return False
     s = str(status).strip().upper()
     cert = cert_type.strip()
     if s == "STUDYING":
-        if cert == "Bonafide":
-            return True
-        if cert == "Bonafide (scholarship purpose)":
+        if cert in ("Bonafide", "Bonafide (scholarship purpose)", "Fee details for IT purpose", "Fee structure for bank loan"):
             return True
         if cert == "Custodium":
             return bool(str(purpose or "").strip())
-        if cert in ("Fee details for IT purpose", "Fee structure for bank loan"):
-            return True
-        if cert == "Course Completion":
-            return False
-    elif s == "COMPLETED" or s == "PASSOUT":
-        if cert in ("Bonafide", "Course Completion"):
-            return True
         return False
+    elif s in ("COMPLETED", "PASSOUT"):
+        return cert in ("Bonafide", "Course Completion")
     else:
         return cert == "Bonafide"
 
-
-@app.route("/admin/search", methods=["GET", "POST"])
-def admin_search():
-    if not session.get("admin"):
-        return redirect(url_for("admin_login"))
-    logs = []
-    query = ""
-    if request.method == "POST":
-        query = request.form["search_hallticket"].strip()
-        if query:
-            logs = CertificateDownload.query.filter(
-                CertificateDownload.student_hallticket.like(f"%{query}%")
-            ).order_by(CertificateDownload.downloaded_at.desc()).all()
-    return render_template("admin_dashboard.html", logs=logs, search_query=query, is_search=True)
-
+# ------------------ Routes ------------------ #
 @app.route("/")
 def home():
     return render_template("index.html")
 
 @app.route("/check_status/<hallticket>")
 def check_status(hallticket):
-    hallticket = str(hallticket).strip()
+    hallticket = str(hallticket).strip().upper()
     student = students.loc[students["HALLTICKET"] == hallticket]
     if student.empty:
         return jsonify({"status": "invalid"})
     status = str(student["STATUS"].values[0]).strip().upper()
-    return jsonify({"status": status})
+    return jsonify(status=status)
 
 @app.route("/admin", methods=["GET", "POST"])
 def admin_login():
@@ -132,10 +232,132 @@ def admin_login():
         if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
             session["admin"] = True
             return redirect(url_for("admin_dashboard"))
-        else:
-            flash("❌ Invalid credentials", "danger")
-            return redirect(url_for("admin_login"))
+        flash("❌ Invalid credentials", "danger")
+        return redirect(url_for("admin_login"))
     return render_template("admin_login.html")
+
+@app.route("/admin/download_audit_log")
+def download_audit_log():
+    if not session.get("admin"):
+        return redirect(url_for("admin_login"))
+
+    audit_file = AUDIT_LOG_FILE  # logs/certificate_audit_log.csv
+
+    if not os.path.exists(audit_file):
+        flash("❌ Audit log file not found.", "danger")
+        return redirect(url_for("admin_dashboard"))
+
+    return send_file(
+        audit_file,
+        as_attachment=True,
+        download_name="certificate_audit_log.csv",
+        mimetype="text/csv"
+    )
+
+
+@app.route("/download_all", methods=["POST"])
+def download_all():
+    if not session.get("admin"):
+        return redirect(url_for("admin_login"))
+
+    cert_types = request.form.getlist("admin_cert_types")
+    if not cert_types:
+        flash("❌ Please select at least one certificate type.", "warning")
+        return redirect(url_for("admin_dashboard"))
+
+    if "all" in cert_types:
+        cert_types = [
+            "Bonafide",
+            "Course Completion",
+            "Custodium",
+            "Fee details for IT purpose",
+            "Fee structure for bank loan"
+        ]
+
+    generated_files = []  # 🔑 store (filename, buffer)
+
+    for _, student_row in students.iterrows():
+        hallticketno = str(student_row["HALLTICKET"]).strip()
+        student_df = pd.DataFrame([student_row])
+
+        status = str(student_row.get("STATUS", "")).strip().upper()
+
+        for cert_type in cert_types:
+            # Eligibility check (IMPORTANT)
+            if not is_cert_eligible(cert_type, status, purpose="Admin Bulk Download"):
+                continue
+
+            buf = create_certificate(
+                cert_type,
+                student_df,
+                hallticketno,
+                purpose="Admin Bulk Download"
+            )
+
+            if not buf:
+                continue
+
+            filename = f"{cert_type}_{hallticketno}.pdf"
+            generated_files.append((filename, buf))
+
+            # Audit log
+            append_audit_log("ADMIN_BULK_GENERATE", {
+                "hall_ticket": hallticketno,
+                "name": student_row.get("NAME"),
+                "certificate_type": cert_type,
+                "purpose": "ADMIN BULK DOWNLOAD",
+                "transaction_id": "ADMIN",
+                "status": status,
+                "actor": "ADMIN",
+                "reference": "BULK_ZIP",
+                "ip": request.remote_addr
+            })
+
+            # DB log
+            db.session.add(CertificateDownload(
+                student_hallticket=hallticketno,
+                certificate_type=cert_type,
+                transaction_id="ADMIN",
+                proof_filename=""
+            ))
+
+    if not generated_files:
+        flash("❌ No eligible certificates were generated.", "danger")
+        return redirect(url_for("admin_dashboard"))
+
+    db.session.commit()
+
+    # 🔥 Create ZIP
+    zip_buffer = BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        for filename, buf in generated_files:
+            buf.seek(0)
+            zf.writestr(filename, buf.read())
+
+    zip_buffer.seek(0)
+    return send_file(
+        zip_buffer,
+        as_attachment=True,
+        download_name="bulk_certificates.zip",
+        mimetype="application/zip"
+    )
+
+
+@app.route("/admin/search", methods=["POST"])
+def admin_search():
+    query = request.form.get("search_hallticket")
+
+    logs = CertificateDownload.query.filter(
+        CertificateDownload.student_hallticket.contains(query)
+    ).order_by(CertificateDownload.downloaded_at.desc()).all()
+
+    return render_template(
+        "admin_dashboard.html",
+        logs=logs,
+        is_search=True,
+        search_query=query
+    )
+
 
 @app.route("/admin/dashboard")
 def admin_dashboard():
@@ -159,41 +381,40 @@ def payment_page():
             return redirect(url_for("home"))
         student = students.loc[students["HALLTICKET"] == hallticketno]
         if student.empty:
-            flash("❌ Hall Ticket number not found!", "danger")
+            flash("❌ Invalid Hall Ticket Number", "danger")
             return redirect(url_for("home"))
         amount_per_cert = 100
         total_amount = len(cert_types) * amount_per_cert
         return render_template("payment.html", cert_types=cert_types, hallticketno=hallticketno, purpose=purpose, total_amount=total_amount)
 
+    # POST request
     cert_types = request.form.getlist("cert_types")
-    hallticketno = request.form.get("hallticketno", "").strip()
+    hallticketno = request.form.get("hallticketno", "").strip().upper()
     purpose = request.form.get("purpose", "").strip()
-
-    if not hallticketno:
-        flash("❌ Please enter Hall Ticket number.", "warning")
+    if not hallticketno or not cert_types or ("Custodium" in cert_types and not purpose):
+        flash("❌ Please fill required fields.", "warning")
         return redirect(url_for("home"))
-    if not cert_types:
-        flash("❌ Please select at least one certificate.", "warning")
-        return redirect(url_for("home"))
-    if "Custodium" in cert_types and not purpose:
-        flash("❌ Purpose is required for Custodium certificate.", "warning")
-        return redirect(url_for("home"))
-    
     student = students.loc[students["HALLTICKET"] == hallticketno]
     if student.empty:
-        flash("❌ Hall Ticket number not found!", "danger")
+        flash("❌ Invalid Hall Ticket Number", "danger")
         return redirect(url_for("home"))
-    
     status = str(student["STATUS"].values[0]).strip().upper()
-    eligible_certs = []
-    for cert in cert_types:
-        if is_cert_eligible(cert, status, purpose):
-            eligible_certs.append(cert)
-    
+    eligible_certs = [cert for cert in cert_types if is_cert_eligible(cert, status, purpose)]
     if not eligible_certs:
         flash("❌ None of the selected certificates are eligible for this student.", "danger")
         return redirect(url_for("home"))
-    
+
+    append_audit_log("REQUEST", {
+        "hall_ticket": hallticketno,
+        "name": student["NAME"].values[0],
+        "certificate_type": ", ".join(eligible_certs),
+        "purpose": purpose,
+        "status": status,
+        "actor": "STUDENT",
+        "reference": "REQUEST_SUBMITTED",
+        "ip": request.remote_addr
+    })
+
     session["cert_types"] = eligible_certs
     session["hallticketno"] = hallticketno
     session["purpose"] = purpose
@@ -204,67 +425,83 @@ def verify_payment():
     cert_types = session.get("cert_types", [])
     hallticketno = session.get("hallticketno")
     purpose = session.get("purpose", "")
-
     if not hallticketno or not cert_types:
-        flash("❌ Session expired or no certificates selected. Please re-start the process.", "danger")
+        flash("❌ Session expired or no certificates selected.", "danger")
         return redirect(url_for("home"))
 
     transaction_id = request.form.get("transaction_id", "").strip()
     proof_file = request.files.get("payment_proof")
-
     if not transaction_id or not proof_file or proof_file.filename == "":
         flash("❌ Please upload both Transaction ID and Payment Proof.", "warning")
         return redirect(url_for("payment_page"))
 
-    try:
-        os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
-        ext = os.path.splitext(proof_file.filename)[1].lower()
-        safe_filename = f"{hallticketno}_{transaction_id}"
-        safe_filename = "".join(c for c in safe_filename if c.isalnum() or c in ("-", "_"))
-        filename = safe_filename + (ext if ext else ".png")
-        proof_path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
-        proof_file.save(proof_path)
-    except Exception as e:
-        flash(f"❌ Error saving file: {str(e)}", "danger")
-        return redirect(url_for("payment_page"))
+    # Save proof file
+    os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
+    ext = os.path.splitext(proof_file.filename)[1].lower()
+    safe_filename = f"{hallticketno}_{transaction_id}"
+    safe_filename = "".join(c for c in safe_filename if c.isalnum() or c in ("-", "_"))
+    filename = safe_filename + (ext if ext else ".png")
+    proof_file.save(os.path.join(app.config["UPLOAD_FOLDER"], filename))
 
     student = students.loc[students["HALLTICKET"] == hallticketno]
-    if student.empty:
-        flash("❌ Hall Ticket number not found!", "danger")
-        return redirect(url_for("home"))
-    
+    append_audit_log("PAYMENT_VERIFIED", {
+        "hall_ticket": hallticketno,
+        "name": student["NAME"].values[0],
+        "certificate_type": ", ".join(cert_types),
+        "purpose": purpose,
+        "transaction_id": transaction_id,
+        "status": student["STATUS"].values[0],
+        "actor": "STUDENT",
+        "reference": "PAYMENT_SUCCESS",
+        "ip": request.remote_addr
+    })
+
+
+    # Generate certificates
     generated = []
     for cert_type in cert_types:
-        status = str(student["STATUS"].values[0]).strip().upper()
-        if not is_cert_eligible(cert_type, status, purpose):
-            continue
         buf = create_certificate(cert_type, student, hallticketno, purpose)
         if buf:
             generated.append((cert_type, buf))
-    
     if not generated:
         flash("❌ No eligible certificates were generated.", "danger")
         return redirect(url_for("home"))
 
     for cert_type, _ in generated:
-        new_log = CertificateDownload(
+        save_student_record(student, hallticketno, cert_type, purpose, transaction_id)
+
+
+    # Log downloads
+    for cert_type, _ in generated:
+        db.session.add(CertificateDownload(
             student_hallticket=hallticketno,
             certificate_type=cert_type,
             transaction_id=transaction_id,
             proof_filename=filename
-        )
-        db.session.add(new_log)
+        ))
+        append_audit_log("CERTIFICATE_GENERATED", {
+            "hall_ticket": hallticketno,
+            "name": student["NAME"].values[0],
+            "certificate_type": cert_type,
+            "purpose": purpose,
+            "transaction_id": transaction_id,
+            "status": student["STATUS"].values[0],
+            "actor": "SYSTEM",
+            "reference": f"{cert_type}_{hallticketno}.pdf",
+            "ip": request.remote_addr
+        })
     db.session.commit()
 
     session.pop("cert_types", None)
     session.pop("hallticketno", None)
     session.pop("purpose", None)
 
+    # Send files
     if len(generated) == 1:
         cert_type, buffer = generated[0]
         buffer.seek(0)
         return send_file(buffer, as_attachment=True, download_name=f"{cert_type}_{hallticketno}.pdf", mimetype="application/pdf")
-
+    
     zip_buffer = BytesIO()
     with zipfile.ZipFile(zip_buffer, "w") as zf:
         for cert_type, buffer in generated:
@@ -273,84 +510,47 @@ def verify_payment():
     zip_buffer.seek(0)
     return send_file(zip_buffer, as_attachment=True, download_name=f"{hallticketno}_certificates.zip", mimetype="application/zip")
 
-# ADMIN BULK DOWNLOAD
-@app.route("/download_all", methods=["POST"])
-def download_all():
-    if not session.get("admin"):
-        return redirect(url_for("admin_login"))
-    
-    cert_types = request.form.getlist("admin_cert_types")
-    if not cert_types:
-        flash("❌ Please select at least one certificate type.", "warning")
-        return redirect(url_for("admin_dashboard"))
-    
-    if "all" in cert_types:
-        cert_types = [
-            "Bonafide",
-            "Course Completion",
-            "Custodium",
-            "Fee details for IT purpose",
-            "Fee structure for bank loan"
-        ]
-    
-    zip_buffer = BytesIO()
-    with zipfile.ZipFile(zip_buffer, "w") as zf:
-        for _, student_row in students.iterrows():
-            hallticketno = student_row["HALLTICKET"]
-            student_df = pd.DataFrame([student_row])
-            for cert_type in cert_types:
-                buf = create_certificate(cert_type, student_df, hallticketno, purpose="Admin Bulk Download")
-                if buf:
-                    filename = f"{cert_type}_{hallticketno}.pdf"
-                    zf.writestr(filename, buf.getvalue())
-                    new_log = CertificateDownload(
-                        student_hallticket=hallticketno, 
-                        certificate_type=cert_type, 
-                        transaction_id="ADMIN", 
-                        proof_filename=""
-                    )
-                    db.session.add(new_log)
-        db.session.commit()
-    
-    zip_buffer.seek(0)
-    return send_file(zip_buffer, as_attachment=True, download_name="bulk_certificates.zip", mimetype="application/zip")
-
 @app.route("/admin/clear_logs_by_date", methods=["POST"])
 def clear_logs_by_date():
     if not session.get("admin"):
         return redirect(url_for("admin_login"))
-    
+
     cutoff_date_str = request.form.get("cutoff_date")
+
     if cutoff_date_str:
         try:
             cutoff = datetime.datetime.strptime(cutoff_date_str, "%Y-%m-%d")
-            deleted = CertificateDownload.query.filter(CertificateDownload.downloaded_at < cutoff).delete()
+            deleted = CertificateDownload.query.filter(
+                CertificateDownload.downloaded_at < cutoff
+            ).delete()
             db.session.commit()
             flash(f"✅ {deleted} logs cleared successfully!", "success")
         except Exception as e:
             print("Error clearing logs:", e)
             flash("❌ Error clearing logs.", "danger")
+
     return redirect(url_for("admin_dashboard"))
 
+
+# ----------------- Certificate Creation ----------------- #
 def create_certificate(cert_type, student, hallticketno, purpose=""):
+    """
+    Generate PDF for a student.
+    Original PDF content preserved as in your code.
+    """
     def safe_get(col):
         return student[col].values[0] if col in student.columns else ""
 
+    # Extract student info
     name = safe_get("NAME")
+    parent_name = safe_get("PARENT NAME")
     branch = safe_get("BRANCH")
+    year = safe_get("YEAR")
+    academic_year = safe_get("ACADEMIC YEAR")
     join_year = safe_get("JOINING YEAR")
     pass_year = safe_get("PASSOUT YEAR")
-    parent_name = safe_get("PARENT NAME")
     status = str(safe_get("STATUS")).strip().lower()
-    academic_year = safe_get("ACADEMIC YEAR")
-    tuition_fee = safe_get("TUITION FEE") if "TUITION FEE" in student.columns else None
-    college_fee = safe_get("COLLEGE FEE") if "COLLEGE FEE" in student.columns else None
-    NBA_fee = safe_get("NBA FEE") if "NBA FEE" in student.columns else None
-    JNTUH_fee = safe_get("JNTUH FEE") if "JNTUH FEE" in student.columns else None
-    bus_fee = safe_get("BUS FEE") if "BUS FEE" in student.columns else None
-    hostel_fee = safe_get("HOSTEL FEE") if "HOSTEL FEE" in student.columns else None
-    total = safe_get("TOTAL") if "TOTAL" in student.columns else None
-    year = safe_get("YEAR")
+    admin_no = safe_get("ADMIN NO")
     hsno = safe_get("R/O") if "R/O" in student.columns else ""
     mandal = safe_get("MANDAL")
     village = safe_get("VILLAGE")
@@ -358,15 +558,19 @@ def create_certificate(cert_type, student, hallticketno, purpose=""):
     district = safe_get("DISTRICT")
     caste = safe_get("CASTE")
     sub_caste = safe_get("SUB CASTE") if "SUB CASTE" in student.columns else ""
-    admin_no = safe_get("ADMIN NO")
-    
+    tuition_fee = safe_get("TUITION FEE")
+    college_fee = safe_get("COLLEGE FEE")
+    NBA_fee = safe_get("NBA FEE")
+    JNTUH_fee = safe_get("JNTUH FEE")
+    bus_fee = safe_get("BUS FEE")
+    hostel_fee = safe_get("HOSTEL FEE")
+    total = safe_get("TOTAL")
+
+    # Eligibility check
     if cert_type == "Course Completion" and status != "completed":
         return None
-    if cert_type == "Custodium":
-        if not purpose.strip():
-            return None
-        if status != "studying":
-            return None
+    if cert_type == "Custodium" and (not purpose.strip() or status != "studying"):
+        return None
     if cert_type in ("Fee details for IT purpose", "Fee structure for bank loan") and status != "studying":
         return None
 
@@ -374,7 +578,6 @@ def create_certificate(cert_type, student, hallticketno, purpose=""):
     page_margin = 1 * cm
     logo_height = 5 * cm
     extra_gap = 1 * cm
-
     doc = SimpleDocTemplate(
         buffer,
         pagesize=A4,
@@ -387,25 +590,12 @@ def create_certificate(cert_type, student, hallticketno, purpose=""):
     styles = getSampleStyleSheet()
     styles.add(ParagraphStyle(name="CenterTitle", alignment=1, fontSize=20, spaceAfter=20))
     styles.add(ParagraphStyle(name="Justify", alignment=4, fontSize=12, leading=18))
-    heading_style_custom = ParagraphStyle(
-        name="HeadingCustom",
-        fontName="Helvetica-Bold",
-        fontSize=14,
-        alignment=1,
-        spaceAfter=20,
-        leading=16
-    )
-    normal_style_custom = ParagraphStyle(
-        name="NormalCustom",
-        fontName="Helvetica",
-        fontSize=11,
-        alignment=4,
-        spaceAfter=12,
-        leading=15
-    )
+    heading_style_custom = ParagraphStyle(name="HeadingCustom", fontName="Helvetica-Bold", fontSize=14, alignment=1, spaceAfter=20, leading=16)
+    normal_style_custom = ParagraphStyle(name="NormalCustom", fontName="Helvetica", fontSize=11, alignment=4, spaceAfter=12, leading=15)
 
     flow = []
 
+    # ---- PDF content code remains unchanged ---- #
     # Certificate contents
     if cert_type == "Bonafide":
         flow.append(Paragraph("<b>BONAFIDE / CONDUCT CERTIFICATE</b>", styles["CenterTitle"]))
@@ -870,96 +1060,55 @@ def create_certificate(cert_type, student, hallticketno, purpose=""):
         flow.append(Paragraph("Invalid certificate type selected!", styles["Justify"]))
         flow.append(Spacer(1, 24))
 
+
+    # Build document
     def draw_first_page(canvas, doc):
         width, height = A4
         margin = 1 * cm
         canvas.saveState()
-
-    # Border
+        # Border and Original Label
         canvas.setLineWidth(2)
         canvas.rect(margin, margin, width - 2 * margin, height - 2 * margin)
-
-    # ORIGINAL text box - top right corner
         canvas.setFont("Helvetica-Bold", 12)
         canvas.setFillColor(colors.red)
         text_x = width - margin - 3 * cm
         text_y = height - margin - 1.2 * cm
         canvas.rect(text_x - 0.3 * cm, text_y - 0.2 * cm, 2.6 * cm, 0.8 * cm)
         canvas.drawString(text_x, text_y, "ORIGINAL")
-
-    # Logo (center top)
         if os.path.exists("logo.png"):
-            logo_width = 8 * cm
-            logo_height = 5 * cm
-            logo_x = margin + (width - 2 * margin - logo_width) / 2
-            logo_y = height - margin - logo_height - 10
-            canvas.drawImage(
-                "logo.png",
-                logo_x,
-                logo_y,
-                width=logo_width,
-                height=logo_height,
-                preserveAspectRatio=True,
-                mask='auto'
-            )
-
-        # Date below logo (1 line gap)
+            canvas.drawImage("logo.png", margin + (width - 2*margin - 8*cm)/2, height - margin - logo_height - 10, width=8*cm, height=5*cm, preserveAspectRatio=True, mask='auto')
             today = datetime.datetime.now().strftime("%d-%m-%Y")
             canvas.setFont("Helvetica-Bold", 11)
             canvas.setFillColor(colors.black)
-            date_y = logo_y - 9  # 1 line gap below logo
-            canvas.drawRightString(width - margin - 1 * cm, date_y, f"Date: {today}")
+            date_y = height - margin - logo_height - 19
+            canvas.drawRightString(width - margin - 1*cm, date_y, f"Date: {today}")
         canvas.restoreState()
-
 
     def draw_later_pages(canvas, doc):
         width, height = A4
         margin = 1 * cm
         canvas.saveState()
-
-    # Border
         canvas.setLineWidth(2)
-        canvas.rect(margin, margin, width - 2 * margin, height - 2 * margin)
-
-    # DUPLICATE text box - top right corner
+        canvas.rect(margin, margin, width - 2*margin, height - 2*margin)
         canvas.setFont("Helvetica-Bold", 12)
         canvas.setFillColor(colors.red)
-        text_x = width - margin - 3 * cm
-        text_y = height - margin - 1.2 * cm
-        canvas.rect(text_x - 0.3 * cm, text_y - 0.2 * cm, 2.9 * cm, 0.8 * cm)
+        text_x = width - margin - 3*cm
+        text_y = height - margin - 1.2*cm
+        canvas.rect(text_x - 0.3*cm, text_y - 0.2*cm, 2.9*cm, 0.8*cm)
         canvas.drawString(text_x, text_y, "DUPLICATE")
-
-    # Logo
         if os.path.exists("logo.png"):
-            logo_width = 8 * cm
-            logo_height = 5 * cm
-            logo_x = margin + (width - 2 * margin - logo_width) / 2
-            logo_y = height - margin - logo_height - 10
-            canvas.drawImage(
-                "logo.png",
-                logo_x,
-                logo_y,
-                width=logo_width,
-                height=logo_height,
-                preserveAspectRatio=True,
-                mask='auto'
-            )
-
-        # Date below logo
+            canvas.drawImage("logo.png", margin + (width - 2*margin - 8*cm)/2, height - margin - logo_height - 10, width=8*cm, height=5*cm, preserveAspectRatio=True, mask='auto')
             today = datetime.datetime.now().strftime("%d-%m-%Y")
             canvas.setFont("Helvetica-Bold", 11)
             canvas.setFillColor(colors.black)
-            date_y = logo_y - 9
-            canvas.drawRightString(width - margin - 1 * cm, date_y, f"Date: {today}")    
+            date_y = height - margin - logo_height - 19
+            canvas.drawRightString(width - margin - 1*cm, date_y, f"Date: {today}")
         canvas.restoreState()
 
-
-# Build document
     doc.build(flow, onFirstPage=draw_first_page, onLaterPages=draw_later_pages)
-
     buffer.seek(0)
     return buffer
 
-
+# ----------------- Run App ----------------- #
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)

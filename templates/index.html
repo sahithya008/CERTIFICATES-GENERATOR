@@ -3,6 +3,7 @@
 
 <head>
     <title>Certificate Generator</title>
+
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -20,7 +21,7 @@
             padding: 30px 40px;
             border-radius: 12px;
             box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
-            max-width: 500px;
+            max-width: 550px;
             width: 100%;
         }
 
@@ -60,41 +61,34 @@
             border: none;
             font-weight: bold;
             cursor: pointer;
-            transition: background 0.3s ease;
         }
 
         button:hover {
             background: #23dfcd;
         }
 
-        .footer {
-            margin-top: 10px;
-            font-size: 12px;
-            text-align: center;
-            color: #5b5858;
-        }
-
         .checkbox-group {
-            display: flex;
-            justify-content: space-between;
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px 20px;
             margin-top: 10px;
         }
 
         .checkbox-column {
             display: flex;
             flex-direction: column;
-            gap: 10px;
+            gap: 12px;
         }
 
         .checkbox-column label {
             display: flex;
             align-items: center;
             font-size: 14px;
-            cursor: pointer;
-            color: #333;
+            color: #000;
         }
 
         .checkbox-column input[type="checkbox"] {
+            width: auto;
             margin-right: 8px;
         }
 
@@ -109,21 +103,24 @@
             text-decoration: none;
         }
 
-        .admin-link-below a:hover {
-            color: #23dfcd;
+        .footer {
+            font-size: 12px;
+            text-align: center;
+            color: #5b5858;
         }
     </style>
 </head>
 
 <body>
+
     <div class="container">
         <h2>🎓 Certificate Generator</h2>
-        <form method="POST" action="/payment">
-            <!-- Hall Ticket Input -->
-            <label for="hallticketno">Hall Ticket Number:</label>
-            <input type="text" id="hallticketno" name="hallticketno" placeholder="Enter Hall Ticket No." required>
 
-            <!-- Certificate Selection -->
+        <form method="POST" action="/payment" id="certForm">
+
+            <label>Hall Ticket Number:</label>
+            <input type="text" id="hallticketno" name="hallticketno" required>
+
             <label>Select Certificates:</label>
             <div class="checkbox-group">
                 <div class="checkbox-column">
@@ -133,57 +130,75 @@
                 </div>
                 <div class="checkbox-column">
                     <label><input type="checkbox" name="cert_types" value="Bonafide (scholarship purpose)"> Bonafide
-                        Certificate [scholarship]</label>
-                    <label><input type="checkbox" name="cert_types" value="Fee details for IT purpose"> Fee details
+                        (Scholarship)</label>
+                    <label><input type="checkbox" name="cert_types" value="Fee details for IT purpose"> Fee Details
                         (IT)</label>
-                    <label><input type="checkbox" name="cert_types" value="Fee structure for bank loan"> Fee structure
+                    <label><input type="checkbox" name="cert_types" value="Fee structure for bank loan"> Fee Structure
                         (Loan)</label>
                 </div>
             </div>
 
-            <!-- Purpose (only for Custodium) -->
-            <div id="purposeDiv" style="display:none; margin-top:15px;">
-                <label for="purpose">Enter Purpose(for custodium only):</label>
-                <input type="text" id="purpose" name="purpose" placeholder="E.g. Educational Loan">
+            <div id="purposeDiv" style="display:none;">
+                <label>Purpose (Custodium):</label>
+                <input type="text" id="purpose" name="purpose">
             </div>
 
             <button type="submit">Proceed to Payment</button>
 
-            <!-- Admin login below the button -->
             <div class="admin-link-below">
                 👩‍💼 <a href="/admin">Admin Login</a>
             </div>
         </form>
 
-        <div class="footer">
-            © 2025 SRITW | Certificate Portal
-        </div>
+        <div class="footer">© 2025 SRITW | Certificate Portal</div>
     </div>
 
     <script>
-        const checkboxes = document.querySelectorAll('input[name="cert_types"]');
-        const purposeInput = document.getElementById('purpose');
+        document.addEventListener("DOMContentLoaded", function () {
 
-        checkboxes.forEach(cb => {
-            cb.addEventListener("change", () => {
-                const custodiumSelected = document.querySelector('input[value="Custodium"]').checked;
-                document.getElementById("purposeDiv").style.display = custodiumSelected ? "block" : "none";
-                purposeInput.required = custodiumSelected;
+            const form = document.getElementById("certForm");
+            const hallticketInput = document.getElementById("hallticketno");
+            const custodiumCheckbox = document.querySelector('input[value="Custodium"]');
+            const purposeDiv = document.getElementById("purposeDiv");
+            const purposeInput = document.getElementById("purpose");
+            const courseCompletionCheckbox = document.querySelector('input[value="Course Completion"]');
 
-                // Example: automatically deselect certificates that cannot be issued
-                // Replace with backend-validated unavailable certs if needed
-                const hallticket = document.getElementById('hallticketno').value.trim();
-                if (hallticket && hallticket.startsWith("X")) { // dummy condition
-                    const courseCompletionCheckbox = document.querySelector('input[value="Course Completion"]');
+            custodiumCheckbox.addEventListener("change", () => {
+                purposeDiv.style.display = custodiumCheckbox.checked ? "block" : "none";
+                purposeInput.required = custodiumCheckbox.checked;
+            });
+
+            hallticketInput.addEventListener("input", () => {
+                if (hallticketInput.value.startsWith("X")) {
                     courseCompletionCheckbox.checked = false;
                     courseCompletionCheckbox.disabled = true;
                 } else {
-                    const courseCompletionCheckbox = document.querySelector('input[value="Course Completion"]');
                     courseCompletionCheckbox.disabled = false;
                 }
             });
+
+            form.addEventListener("submit", async function (e) {
+                e.preventDefault();
+
+                const hallticket = hallticketInput.value.trim().toUpperCase();
+                if (!hallticket) return;
+
+                const res = await fetch("/check_status/" + hallticket);
+                const data = await res.json();
+
+                if (data.status === "invalid") {
+                    alert("❌ Invalid Hall Ticket Number!");
+                    hallticketInput.value = "";
+                    hallticketInput.focus();
+                    return;
+                }
+
+                form.submit(); // ✅ submit only if valid
+            });
+
         });
     </script>
+
 </body>
 
 </html>
