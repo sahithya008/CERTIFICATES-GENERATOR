@@ -13,6 +13,13 @@ import pandas as pd
 import html
 import zipfile
 from flask_sqlalchemy import SQLAlchemy
+import pytz
+
+IST = pytz.timezone("Asia/Kolkata")
+
+def ist_now():
+    return datetime.now(IST)
+
 
 app = Flask(__name__)
 app.secret_key = "yoursecretkey"
@@ -218,7 +225,7 @@ class CertificateDownload(db.Model):
     certificate_type = db.Column(db.String(100), nullable=False)
     transaction_id = db.Column(db.String(100), nullable=True)
     proof_filename = db.Column(db.String(200), nullable=True)
-    downloaded_at = db.Column(db.DateTime, default=datetime.utcnow)
+    downloaded_at = db.Column(db.DateTime, default=ist_now)
 
 # Database initialization
 with app.app_context():
