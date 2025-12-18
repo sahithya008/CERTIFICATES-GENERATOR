@@ -129,9 +129,10 @@ def append_audit_log(event_type, data):
     
     file_exists = os.path.isfile(AUDIT_LOG_FILE)
     
-    now = datetime.utcnow()
-    date_str = now.date().isoformat()
-    time_str = now.time().strftime("%H:%M:%S")
+    now = datetime.now(IST)
+    date_str = now.strftime("%d-%m-%Y")
+    time_str = now.strftime("%H:%M:%S")
+
     
     with open(AUDIT_LOG_FILE, mode="a", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
@@ -164,46 +165,20 @@ def append_audit_log(event_type, data):
 
 @app.route("/admin/export_certificates_csv")
 def export_certificates_csv():
-    text_buffer = StringIO()
-    writer = csv.writer(text_buffer)
+    audit_path = "logs/certificate_audit_log.csv"
 
-    # CSV headers
-    writer.writerow([
-        "date",
-        "time",
-        "hallticket",
-        "certificate",
-        "transaction_id",
-        "proof_filename"
-    ])
-
-    # 🔒 PERMANENT SOURCE: DATABASE
-    logs = CertificateDownload.query.order_by(
-        CertificateDownload.downloaded_at.asc()
-    ).all()
-
-    for log in logs:
-        ist = timezone(timedelta(hours=5, minutes=30))
-        dt = (log.downloaded_at or datetime.utcnow()).replace(tzinfo=timezone.utc).astimezone(ist)
-
-        writer.writerow([
-            dt.date().isoformat(),
-            dt.time().strftime("%H:%M:%S"),
-            log.student_hallticket,
-            log.certificate_type,
-            log.transaction_id or "",
-            log.proof_filename or ""
-        ])
-
-    byte_buffer = BytesIO(text_buffer.getvalue().encode("utf-8"))
-    byte_buffer.seek(0)
+    # If audit file doesn't exist yet
+    if not os.path.exists(audit_path):
+        flash("No audit data available", "warning")
+        return redirect(url_for("admin_dashboard"))
 
     return send_file(
-        byte_buffer,
+        audit_path,
         as_attachment=True,
         download_name="certificate_report.csv",
         mimetype="text/csv"
     )
+
 
 
 
@@ -446,20 +421,19 @@ def admin_search():
 
 @app.route("/admin/dashboard")
 def admin_dashboard():
-    if not session.get("admin"):
-        return redirect(url_for("admin_login"))
-    logs = CertificateDownload.query.order_by(CertificateDownload.downloaded_at.desc()).all()
-    utc = timezone.utc
-    ist = timezone(timedelta(hours=5, minutes=30))
+    logs = []
+    audit_path = "logs/certificate_audit_log.csv"
+
+    if os.path.exists(audit_path):
+        with open(audit_path, newline="", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            logs = list(reader)
 
     return render_template(
         "admin_dashboard.html",
-        logs=logs,
-        ist=ist,
-        utc=utc,
-        search_query=None,
-        is_search=False
+        logs=logs
     )
+
 
 
 @app.route("/logout")
@@ -614,73 +588,17 @@ def verify_payment():
     zip_buffer.seek(0)
     return send_file(zip_buffer, as_attachment=True, download_name=f"{hallticketno}_certificates.zip", mimetype="application/zip")
 
+@app.route("/admin/permanent-records")
+def permanent_records():
+    logs = []
+    audit_path = "logs/certificate_audit_log.csv"
 
+    if os.path.exists(audit_path):
+        with open(audit_path, newline="", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            logs = list(reader)
 
-    # Generate certificates
-    generated = []
-    for cert_type in cert_types:
-        buf = create_certificate(cert_type, student, hallticketno, purpose)
-        if buf:
-            generated.append((cert_type, buf))
-    if not generated:
-        flash("❌ No eligible certificates were generated.", "danger")
-        return redirect(url_for("home"))
-
-    save_student_record(
-        student,
-        hallticketno,
-        ", ".join(cert_types),   # store all certs once
-        purpose,
-        transaction_id
-    )
-
-
-    # Log downloads
-    for cert_type, _ in generated:
-        db.session.add(CertificateDownload(
-            student_hallticket=hallticketno,
-            certificate_type=cert_type,
-            transaction_id=transaction_id,
-            proof_filename=filename
-        ))
-        
-        db.session.add(CertificateAudit(
-            hallticket=hallticketno,
-            certificate_type=cert_type,
-            transaction_id=transaction_id,
-            proof_filename=filename
-        ))
-        
-        append_audit_log("CERTIFICATE_GENERATED", {
-            "hall_ticket": hallticketno,
-            "name": student["NAME"].values[0],
-            "certificate_type": cert_type,
-            "purpose": purpose,
-            "transaction_id": transaction_id,
-            "status": student["STATUS"].values[0],
-            "actor": "SYSTEM",
-            "reference": f"{cert_type}_{hallticketno}.pdf",
-            "ip": request.remote_addr
-        })
-    db.session.commit()
-
-    session.pop("cert_types", None)
-    session.pop("hallticketno", None)
-    session.pop("purpose", None)
-
-    # Send files
-    if len(generated) == 1:
-        cert_type, buffer = generated[0]
-        buffer.seek(0)
-        return send_file(buffer, as_attachment=True, download_name=f"{cert_type}_{hallticketno}.pdf", mimetype="application/pdf")
-    
-    zip_buffer = BytesIO()
-    with zipfile.ZipFile(zip_buffer, "w") as zf:
-        for cert_type, buffer in generated:
-            buffer.seek(0)
-            zf.writestr(f"{cert_type}_{hallticketno}.pdf", buffer.getvalue())
-    zip_buffer.seek(0)
-    return send_file(zip_buffer, as_attachment=True, download_name=f"{hallticketno}_certificates.zip", mimetype="application/zip")
+    return render_template("permanent_records.html", logs=logs)
 
 @app.route("/admin/clear_logs_by_date", methods=["POST"])
 def clear_logs_by_date():
@@ -1175,27 +1093,25 @@ def create_certificate(cert_type, student, hallticketno, purpose=""):
 
 
         flow.append(Spacer(1, 0.6 * cm))  # 2 cm gap below content
-        def add_principal(flow):
-            principal_style = ParagraphStyle(
-                name="PrincipalStyle",
-                fontName="Helvetica-Bold",
-                fontSize=12,       # Increase size (adjust as needed)
-                textColor=colors.black,
-                alignment=2        # 2 = RIGHT
-            )
+        principal_style = ParagraphStyle(
+            name="PrincipalStyle",
+            fontName="Helvetica-Bold",
+            fontSize=12,       # Increase size (adjust as needed)
+            textColor=colors.black,
+            alignment=2        # 2 = RIGHT
+        )
 
 # Table for right-aligned "Principal"
-            principal_table = Table(
-                [[Paragraph("PRINCIPAL", principal_style)]],
-                colWidths=[5 * cm],  # adjust width if needed
-                hAlign='RIGHT'
+        principal_table = Table(
+            [[Paragraph("PRINCIPAL", principal_style)]],
+            colWidths=[5 * cm],  # adjust width if needed
+            hAlign='RIGHT'
         )
-            principal_table.setStyle(TableStyle([
-                ('RIGHTPADDING', (0, 0), (-1, -1), 2 * cm),  # 3 cm gap from page edge
-            ]))
-            flow.append(principal_table)
-        flow.append(Spacer(1,15))
-        flow.append(PageBreak())
+        principal_table.setStyle(TableStyle([
+            ('RIGHTPADDING', (0, 0), (-1, -1), 2 * cm),  # 3 cm gap from page edge
+        ]))
+        flow.append(principal_table)
+        flow.append(Spacer(1, 12))
         
         flow.append(Paragraph("<b>TO WHOMSOEVER IT MAY CONCERN</b>", heading_style_custom))
         flow.append(Spacer(1, 20))
@@ -1226,7 +1142,26 @@ def create_certificate(cert_type, student, hallticketno, purpose=""):
             "Branch IFSC Code: UBIN0819123",
             styles["Justify"]
         ))
-        add_principal(flow)
+        flow.append(Spacer(1,0.5))
+        principal_style = ParagraphStyle(
+            name="PrincipalStyle",
+            fontName="Helvetica-Bold",
+            fontSize=12,       # Increase size (adjust as needed)
+            textColor=colors.black,
+            alignment=2        # 2 = RIGHT
+        )
+
+# Table for right-aligned "Principal"
+        principal_table = Table(
+            [[Paragraph("PRINCIPAL", principal_style)]],
+            colWidths=[5 * cm],  # adjust width if needed
+            hAlign='RIGHT'
+        )
+        principal_table.setStyle(TableStyle([
+            ('RIGHTPADDING', (0, 0), (-1, -1), 2 * cm),  # 3 cm gap from page edge
+        ]))
+        flow.append(principal_table)
+        
 
     else:
         flow.append(Paragraph("Invalid certificate type selected!", styles["Justify"]))

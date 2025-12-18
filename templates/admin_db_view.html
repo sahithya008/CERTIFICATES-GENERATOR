@@ -76,26 +76,27 @@
             <table class="table table-bordered table-hover">
                 <thead>
                     <tr>
-                        <th>ID</th>
+                        <th>#</th>
                         <th>Hallticket</th>
                         <th>Certificate Type</th>
                         <th>Transaction ID</th>
                         <th>Proof Filename</th>
-                        <th>Downloaded At (IST)</th>
+                        <th>Date & Time (IST)</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for log in logs %}
-                    <tr class="{% if log.is_new %}highlight-new{% endif %}">
-                        <td>{{ log.id }}</td>
+                    <tr>
+                        <td>{{ loop.index }}</td>
                         <td>{{ log.hallticket }}</td>
-                        <td>{{ log.certificate_type }}</td>
-                        <td>{{ log.transaction_id }}</td>
-                        <td>{{ log.proof_filename }}</td>
-                        <td>{{ log.downloaded_at }}</td>
+                        <td>{{ log.certificate }}</td>
+                        <td>{{ log.transaction_id or '-' }}</td>
+                        <td>{{ log.proof_filename or '-' }}</td>
+                        <td>{{ log.date }} {{ log.time }}</td>
                     </tr>
                     {% endfor %}
                 </tbody>
+
             </table>
         </div>
 
