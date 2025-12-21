@@ -25,8 +25,8 @@ app.config["UPLOAD_FOLDER"] = "static/uploads"
 os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
 
 # Admin credentials
-ADMIN_USERNAME = " "
-ADMIN_PASSWORD = " "
+ADMIN_USERNAME = "admin"
+ADMIN_PASSWORD = "admin123"
 
 # Excel setup
 EXCEL_FILE = "student_certificates.xlsx"
