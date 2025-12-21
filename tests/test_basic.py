@@ -84,3 +84,38 @@ def test_verify_payment_upload_flow(client, tmp_path):
     # Remove the temporary student row
     students.drop(students[students['HALLTICKET'] == student_hall].index, inplace=True)
     assert len(students) == orig_len
+
+
+def test_admin_api_requires_auth(client):
+    rv = client.post('/admin/api/students', json={'HALLTICKET': 'AUTHTEST1', 'NAME': 'A', 'STATUS': 'STUDYING'})
+    assert rv.status_code == 401
+
+
+def test_admin_api_add_student_success(client):
+    import uuid
+    hall = 'AUTHTEST2_' + uuid.uuid4().hex[:8]
+
+    # Ensure it doesn't already exist
+    assert hall not in students['HALLTICKET'].astype(str).values
+
+    with client.session_transaction() as sess:
+        sess['admin'] = True
+
+    payload = {'HALLTICKET': hall, 'NAME': 'API Student', 'STATUS': 'STUDYING'}
+    rv = client.post('/admin/api/students', json=payload)
+    assert rv.status_code == 201
+    data = rv.get_json()
+    assert data.get('success') is True
+
+    # Verify persistent Excel was updated
+    import pandas as pd
+    df_on_disk = pd.read_excel('student_certificates.xlsx', engine='openpyxl')
+    assert hall in df_on_disk['HALLTICKET'].astype(str).values
+
+    # Cleanup: remove from Excel file
+    df_on_disk = df_on_disk[df_on_disk['HALLTICKET'].astype(str) != hall]
+    df_on_disk.to_excel('student_certificates.xlsx', index=False, engine='openpyxl')
+
+    # Sanity check: ensure it's gone on disk
+    df_reloaded = pd.read_excel('student_certificates.xlsx', engine='openpyxl')
+    assert hall not in df_reloaded['HALLTICKET'].astype(str).values

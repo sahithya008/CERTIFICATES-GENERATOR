@@ -332,6 +332,84 @@ def clear_logs_by_date():
             flash("❌ Error clearing logs.", "danger")
     return redirect(url_for("admin_dashboard"))
 
+
+def _check_admin_auth():
+    """Return True if the request is authenticated as admin via session or basic-auth."""
+    # Session-based authentication (from admin login)
+    if session.get("admin"):
+        return True
+    # HTTP Basic Auth fallback
+    auth = request.authorization
+    if auth and auth.username == ADMIN_USERNAME and auth.password == ADMIN_PASSWORD:
+        return True
+    return False
+
+
+@app.route('/admin/api/students', methods=['POST'])
+def admin_api_add_student():
+    """Add a student row to the Excel data source.
+
+    Authentication: session admin or HTTP Basic auth matching ADMIN_USERNAME / ADMIN_PASSWORD.
+
+    Expected JSON payload (application/json):
+      {
+        "HALLTICKET": "string",
+        "NAME": "string",
+        "STATUS": "STUDYING" | "COMPLETED" | "PASSOUT",
+        ... optional other columns ...
+      }
+
+    Returns JSON {"success": True, "student": {...}} on 201 or error message with 4xx code.
+    """
+    if not _check_admin_auth():
+        return jsonify({"error": "unauthorized"}), 401
+
+    payload = request.get_json(force=True, silent=True)
+    if not payload or not isinstance(payload, dict):
+        return jsonify({"error": "invalid JSON payload"}), 400
+
+    required = ["HALLTICKET", "NAME", "STATUS"]
+    missing = [r for r in required if not payload.get(r)]
+    if missing:
+        return jsonify({"error": f"missing required fields: {', '.join(missing)}"}), 400
+
+    hall = str(payload.get("HALLTICKET")).strip()
+    status = str(payload.get("STATUS")).strip().upper()
+    if status not in ("STUDYING", "COMPLETED", "PASSOUT"):
+        return jsonify({"error": "invalid STATUS. Use STUDYING, COMPLETED, or PASSOUT"}), 400
+
+    # Use global students variable and prevent duplicate hallticket
+    global students
+    if hall in students["HALLTICKET"].astype(str).values:
+        return jsonify({"error": "HALLTICKET already exists"}), 400
+
+    # Append row to Excel file
+    try:
+        df = pd.read_excel(EXCEL_FILE, engine="openpyxl")
+    except Exception as e:
+        return jsonify({"error": f"failed to read Excel: {e}"}), 500
+
+    new_row = {k: payload.get(k, "") for k in df.columns}
+    # Ensure mandatory fields are set even if columns missing
+    new_row.update({"HALLTICKET": hall, "NAME": payload.get("NAME", ""), "STATUS": status})
+
+    try:
+        df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+        df.to_excel(EXCEL_FILE, index=False, engine="openpyxl")
+    except Exception as e:
+        return jsonify({"error": f"failed to write to Excel: {e}"}), 500
+
+    # Reload in-memory students DataFrame
+    try:
+        students = pd.read_excel(EXCEL_FILE, engine="openpyxl")
+        students.columns = [c.strip() for c in students.columns]
+    except Exception:
+        # If reload fails, we still added the row to disk. Log and continue.
+        print("Warning: failed to reload students DataFrame after adding student")
+
+    return jsonify({"success": True, "student": {"HALLTICKET": hall, "NAME": payload.get("NAME", ""), "STATUS": status}}), 201
+
+
 def create_certificate(cert_type, student, hallticketno, purpose=""):
     def safe_get(col):
         return student[col].values[0] if col in student.columns else ""
