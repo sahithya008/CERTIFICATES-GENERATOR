@@ -318,4 +318,3 @@ pytest -q
 
 ---
 
-If you'd like, I can add the `tests/test_basic.py` file and a small GitHub Actions workflow that runs `pytest` on push/PR — tell me which and I'll add it. 
