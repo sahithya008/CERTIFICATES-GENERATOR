@@ -78,6 +78,39 @@ Prerequisites: Python 3.10+, git
 
 ---
 
+## New in this fork — Feature 1 of 3 ✅
+
+**Admin API — Programmatic student creation**
+
+A concise, authenticated API endpoint has been added to this fork to allow administrators to add students directly to the project's canonical Excel data source (`student_certificates.xlsx`). This capability is intended to make onboarding, bulk provisioning, and scripted workflows easy without manual spreadsheet edits.
+
+- **Endpoint:** `POST /admin/api/students` (JSON)
+- **Authentication:** Admin session (via `/admin` login) or HTTP Basic Auth using `ADMIN_USERNAME` / `ADMIN_PASSWORD`.
+- **Required fields:** `HALLTICKET`, `NAME`, `STATUS` (one of `STUDYING`, `COMPLETED`, `PASSOUT`). Additional columns present in the spreadsheet can be supplied and will be preserved if present.
+
+Example usage (Basic Auth):
+
+```bash
+curl -X POST -u "$ADMIN_USERNAME:$ADMIN_PASSWORD" \
+  -H "Content-Type: application/json" \
+  -d '{"HALLTICKET":"HT2025EX","NAME":"Demo Student","STATUS":"STUDYING"}' \
+  http://localhost:5000/admin/api/students
+```
+
+Response: `201 Created` with a JSON body `{ "success": true, "student": { ... } }` on success; errors return a JSON `error` message and an appropriate HTTP status.
+
+---
+
+### This fork roadmap (short)
+
+- **Feature 1 (this PR):** Admin API — add student (programmatic) ✅
+- **Planned Feature 2:** Admin UI for student management (create/edit rows from the dashboard)
+- **Planned Feature 3:** CSV/Excel import endpoint for bulk student uploads
+
+> Note: This repository is maintained in the fork and the above feature is the first official enhancement added here; the next two features will be added iteratively and documented in subsequent PRs.
+
+---
+
 ## Manual tests & verification
 
 - Home page loads at `/`.
