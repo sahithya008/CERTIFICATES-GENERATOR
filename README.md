@@ -98,6 +98,26 @@ Prerequisites: Python 3.10+, git
 - Admin functionality (after setting credentials):
   - Login at `/admin`, search download logs, perform bulk download, or clear logs by date.
 
+### Admin API — Add student (programmatic)
+
+A simple authenticated API is available to add a student row to `student_certificates.xlsx`.
+
+Endpoint: `POST /admin/api/students`
+
+- Authentication: Either an active admin session (log in via `/admin`) or HTTP Basic Auth using `ADMIN_USERNAME` and `ADMIN_PASSWORD`.
+- Payload (JSON): at minimum include `HALLTICKET`, `NAME`, and `STATUS` (one of `STUDYING`, `COMPLETED`, `PASSOUT`). Additional columns present in the spreadsheet will be preserved if provided.
+
+Example (using basic auth):
+
+```bash
+curl -X POST -u "$ADMIN_USERNAME:$ADMIN_PASSWORD" \
+  -H "Content-Type: application/json" \
+  -d '{"HALLTICKET":"HT2025EX","NAME":"Demo Student","STATUS":"STUDYING"}' \
+  http://localhost:5000/admin/api/students
+```
+
+Response: `201 Created` with `{ "success": true, "student": { ... } }` on success. Errors return JSON with `error` and appropriate 4xx/5xx code.
+
 ---
 
 ## Automated tests
