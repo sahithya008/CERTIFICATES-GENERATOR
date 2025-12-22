@@ -242,6 +242,79 @@
         .tab-content.active {
             display: block;
         }
+
+        .date-range-filter {
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            display: flex;
+            gap: 15px;
+            align-items: flex-end;
+            flex-wrap: wrap;
+        }
+
+        .date-range-filter input {
+            padding: 8px 12px;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+
+        .date-range-filter button {
+            background: #0e315f;
+            color: white;
+            border: none;
+            padding: 8px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        .date-range-filter button:hover {
+            background: #1a4a7f;
+        }
+
+        .export-btn {
+            background: #4caf50;
+            color: white;
+            border: none;
+            padding: 8px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        .export-btn:hover {
+            background: #117a30;
+        }
+
+        .advanced-metrics {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .metric-card {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .metric-card h4 {
+            margin: 0 0 8px 0;
+            color: #666;
+            font-size: 0.85em;
+        }
+
+        .metric-value {
+            font-size: 1.8em;
+            color: #0e315f;
+            font-weight: bold;
+        }
     </style>
 </head>
 
@@ -263,6 +336,21 @@
             <div class="analytics-section">
                 <h2>Dashboard Analytics</h2>
                 
+                <!-- Date Range Filter -->
+                <div class="date-range-filter">
+                    <div>
+                        <label for="startDate">Start Date:</label>
+                        <input type="date" id="startDate">
+                    </div>
+                    <div>
+                        <label for="endDate">End Date:</label>
+                        <input type="date" id="endDate">
+                    </div>
+                    <button onclick="filterByDateRange()">📅 Filter</button>
+                    <button onclick="resetDateFilter()" style="background: #999;">Reset</button>
+                    <a href="/admin/api/analytics/export/csv" class="export-btn" style="text-decoration: none;">⬇️ Export CSV</a>
+                </div>
+                
                 <!-- Statistics Cards -->
                 <div class="stats-grid">
                     <div class="stat-card">
@@ -279,6 +367,18 @@
                     </div>
                 </div>
 
+                <!-- Advanced Metrics -->
+                <div class="advanced-metrics" id="advancedMetrics" style="display: none;">
+                    <div class="metric-card">
+                        <h4>Average per Student</h4>
+                        <div class="metric-value" id="avg-per-student">-</div>
+                    </div>
+                    <div class="metric-card">
+                        <h4>Most Popular Certificate</h4>
+                        <div class="metric-value" id="popular-cert">-</div>
+                    </div>
+                </div>
+
                 <!-- Charts -->
                 <div class="charts-row">
                     <div class="chart-container">
@@ -289,6 +389,16 @@
                         <h3>Top 5 Students</h3>
                         <canvas id="topStudentsChart"></canvas>
                     </div>
+                </div>
+
+                <div class="chart-container">
+                    <h3>Hourly Distribution</h3>
+                    <canvas id="hourlyChart"></canvas>
+                </div>
+
+                <div class="chart-container">
+                    <h3>Monthly Comparison (Last 6 Months)</h3>
+                    <canvas id="monthlyChart"></canvas>
                 </div>
 
                 <div class="chart-container">
@@ -401,6 +511,7 @@
             // Load analytics only when analytics tab is opened
             if (tabName === 'analytics') {
                 loadAnalytics();
+                loadAdvancedAnalytics();
             }
         }
 
@@ -416,10 +527,61 @@
                 .catch(error => console.error('Error loading analytics:', error));
         }
 
+        function loadAdvancedAnalytics() {
+            fetch('/admin/api/analytics/advanced')
+                .then(response => response.json())
+                .then(data => {
+                    updateAdvancedMetrics(data);
+                    updateHourlyChart(data.hourly_distribution);
+                    updateMonthlyChart(data.monthly_comparison);
+                })
+                .catch(error => console.error('Error loading advanced analytics:', error));
+        }
+
         function updateStatistics(data) {
             document.getElementById('total-downloads').textContent = data.total_downloads;
             document.getElementById('unique-students').textContent = data.unique_students;
             document.getElementById('peak-hour').textContent = data.peak_hour;
+        }
+
+        function updateAdvancedMetrics(data) {
+            const metrics = data.success_metrics;
+            document.getElementById('avg-per-student').textContent = metrics.avg_per_student;
+            document.getElementById('popular-cert').textContent = metrics.most_popular_cert.substring(0, 20) + '...';
+            document.getElementById('advancedMetrics').style.display = 'grid';
+        }
+
+        function filterByDateRange() {
+            const startDate = document.getElementById('startDate').value;
+            const endDate = document.getElementById('endDate').value;
+
+            if (!startDate || !endDate) {
+                alert('Please select both start and end dates');
+                return;
+            }
+
+            fetch('/admin/api/analytics/date-range', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    start_date: startDate,
+                    end_date: endDate
+                })
+            })
+                .then(response => response.json())
+                .then(data => {
+                    alert(`Filtered Data:\n- Total Downloads: ${data.total_downloads}\n- Unique Students: ${data.unique_students}`);
+                })
+                .catch(error => console.error('Error:', error));
+        }
+
+        function resetDateFilter() {
+            document.getElementById('startDate').value = '';
+            document.getElementById('endDate').value = '';
+            loadAnalytics();
+            loadAdvancedAnalytics();
         }
 
         function updateCharts(data) {
@@ -497,6 +659,73 @@
                         data: Object.values(data.daily_data),
                         borderColor: '#0e315f',
                         backgroundColor: 'rgba(14, 49, 95, 0.1)',
+                        tension: 0.4,
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateHourlyChart(hourlyData) {
+            const hourlyCtx = document.getElementById('hourlyChart');
+            if (charts.hourly) {
+                charts.hourly.destroy();
+            }
+            charts.hourly = new Chart(hourlyCtx, {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(hourlyData),
+                    datasets: [{
+                        label: 'Downloads',
+                        data: Object.values(hourlyData),
+                        backgroundColor: '#FF9F40'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateMonthlyChart(monthlyData) {
+            const monthlyCtx = document.getElementById('monthlyChart');
+            if (charts.monthly) {
+                charts.monthly.destroy();
+            }
+            charts.monthly = new Chart(monthlyCtx, {
+                type: 'line',
+                data: {
+                    labels: Object.keys(monthlyData),
+                    datasets: [{
+                        label: 'Downloads',
+                        data: Object.values(monthlyData),
+                        borderColor: '#4BC0C0',
+                        backgroundColor: 'rgba(75, 192, 192, 0.1)',
                         tension: 0.4,
                         fill: true
                     }]
