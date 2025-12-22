@@ -78,11 +78,11 @@ Prerequisites: Python 3.10+, git
 
 ---
 
-## New in this fork — Feature 1 of 3 ✅
+## New in this fork — Feature 1 of 4 ✅
 
 **Admin API — Programmatic student creation**
 
-A concise, authenticated API endpoint has been added to this fork to allow administrators to add students directly to the project's canonical Excel data source (`student_certificates.xlsx`). This capability is intended to make onboarding, bulk provisioning, and scripted workflows easy without manual spreadsheet edits.
+A concise, authenticated API endpoint has been added in this fork to allow administrators to add students directly to the project's canonical Excel data source (`student_certificates.xlsx`). This capability is intended to make onboarding, bulk provisioning, and scripted workflows easy without manual spreadsheet edits.
 
 - **Endpoint:** `POST /admin/api/students` (JSON)
 - **Authentication:** Admin session (via `/admin` login) or HTTP Basic Auth using `ADMIN_USERNAME` / `ADMIN_PASSWORD`.
@@ -99,6 +99,50 @@ curl -X POST -u "$ADMIN_USERNAME:$ADMIN_PASSWORD" \
 
 Response: `201 Created` with a JSON body `{ "success": true, "student": { ... } }` on success; errors return a JSON `error` message and an appropriate HTTP status.
 
+---
+
+## New in this fork — Feature 2 ✅
+
+**Logs: Search, Filter, Pagination & CSV Export**
+
+This feature enhances the admin `Logs` view with interactive, user-facing capabilities to inspect certificate generation and payment events.
+
+What was added:
+- **Search / filter fields** on the Logs tab: Hall Ticket (partial match), Certificate Type, Transaction ID, and a date range (From / To).
+- **Server-side pagination** with 20 entries per page and Prev / Next controls that preserve filters.
+- **CSV export endpoint** to download filtered logs: `GET /admin/export_logs` (available from the Logs UI as **⬇️ Export CSV**).
+- **Preserves admin session** and requires admin login to access export or filter functionality.
+
+How to use (manual):
+1. Login as admin at `/admin` (default dev credentials in `app.py` are `admin` / `admin123`).
+2. Open the **Logs** tab and use the inputs to filter by Hall Ticket, Certificate Type, Transaction ID, and date range.
+3. Click **Filter** to apply the filters. Use the pagination controls to navigate pages.
+4. Click **⬇️ Export CSV** to download the currently-filtered rows as a CSV file.
+
+Programmatic export example (curl with cookies):
+
+```bash
+# login and save cookies
+curl -s -c cookies.txt -X POST -d "username=admin&password=admin123" http://localhost:5000/admin -L
+
+# download CSV using the same cookies and filters (sample: hallticket=HT2025EX)
+curl -s -b cookies.txt "http://localhost:5000/admin/export_logs?hallticket=HT2025EX&start_date=2025-01-01&end_date=2025-12-31" -o exported_logs.csv
+```
+
+Notes for testers:
+- Filters use SQL LIKE for partial matching on Hall Ticket and Transaction ID.
+- Date inputs expect `YYYY-MM-DD` and end date is inclusive.
+- Export requires an authenticated admin session.
+
+
+### This fork roadmap (short)
+
+- **Feature 1 (this PR):** Admin API — add student (programmatic) ✅
+- **Feature 2 (this PR):** Logs search/filter/pagination/export ✅
+- **Planned Feature 3:** Admin UI for student management (create/edit rows from the dashboard)
+- **Planned Feature 4:** Bulk CSV import + template editor
+
+> Note: This repository is maintained in the fork and the above features are being added incrementally and documented in each PR.
 ---
 
 ### This fork roadmap (short)
