@@ -5,6 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
     <style>
         body {
             font-family: "Poppins", sans-serif;
@@ -42,6 +43,56 @@
 
         .container {
             padding: 30px;
+        }
+
+        .analytics-section {
+            margin-bottom: 40px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            text-align: center;
+        }
+
+        .stat-card h3 {
+            color: #666;
+            font-size: 0.9em;
+            margin: 0 0 10px 0;
+            text-transform: uppercase;
+        }
+
+        .stat-value {
+            color: #0e315f;
+            font-size: 2.5em;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+
+        .chart-container {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            margin-bottom: 30px;
+            position: relative;
+            height: 400px;
+        }
+
+        .charts-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
         }
 
         .filter-section {
@@ -103,6 +154,11 @@
             margin-bottom: 10px;
         }
 
+        h3 {
+            color: #0e315f;
+            margin-top: 0;
+        }
+
         table {
             width: 100%;
             border-collapse: collapse;
@@ -148,6 +204,117 @@
             box-shadow: 0px 1px 3px #e5e5e5;
             max-width: 600px;
         }
+
+        .loading {
+            text-align: center;
+            color: #999;
+            padding: 20px;
+        }
+
+        .tab-buttons {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .tab-btn {
+            background: #0e315f;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: 0.3s;
+        }
+
+        .tab-btn.active {
+            background: #4caf50;
+        }
+
+        .tab-btn:hover {
+            background: #1a4a7f;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .date-range-filter {
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            display: flex;
+            gap: 15px;
+            align-items: flex-end;
+            flex-wrap: wrap;
+        }
+
+        .date-range-filter input {
+            padding: 8px 12px;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+
+        .date-range-filter button {
+            background: #0e315f;
+            color: white;
+            border: none;
+            padding: 8px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        .date-range-filter button:hover {
+            background: #1a4a7f;
+        }
+
+        .export-btn {
+            background: #4caf50;
+            color: white;
+            border: none;
+            padding: 8px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        .export-btn:hover {
+            background: #117a30;
+        }
+
+        .advanced-metrics {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .metric-card {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .metric-card h4 {
+            margin: 0 0 8px 0;
+            color: #666;
+            font-size: 0.85em;
+        }
+
+        .metric-value {
+            font-size: 1.8em;
+            color: #0e315f;
+            font-weight: bold;
+        }
     </style>
 </head>
 
@@ -158,87 +325,454 @@
     </header>
 
     <div class="container">
-        <h2>Payment & Certificate Logs</h2>
-        <div class="filter-section">
-            <!-- Admin Bulk Download -->
-            <div class="bulk-download-block">
-                <form action="{{ url_for('download_all') }}" method="POST">
-                    <h3 style="margin-top: 0;">Bulk Download Certificates</h3>
-                    <label><input type="checkbox" name="admin_cert_types" value="all"> All Certificate Types</label><br>
-                    <label><input type="checkbox" name="admin_cert_types" value="Bonafide"> Bonafide</label><br>
-                    <label><input type="checkbox" name="admin_cert_types" value="Bonafide (scholarship purpose)">
-                        Bonafide Certificate[scholarship]</label><br>
-                    <label><input type="checkbox" name="admin_cert_types" value="Course Completion"> Course
-                        Completion</label><br>
-                    <label><input type="checkbox" name="admin_cert_types" value="Custodium"> Custodium</label><br>
-                    <label><input type="checkbox" name="admin_cert_types" value="Fee details for IT purpose"> Fee
-                        Details (IT)</label><br>
-                    <label><input type="checkbox" name="admin_cert_types" value="Fee structure for bank loan"> Fee
-                        Structure (Loan)</label><br>
-                    <button type="submit" class="bulk-download-btn">Download Selected</button>
-                </form>
+        <!-- Tab Navigation -->
+        <div class="tab-buttons">
+            <button class="tab-btn active" onclick="showTab('analytics')">📊 Analytics</button>
+            <button class="tab-btn" onclick="showTab('logs')">📋 Logs</button>
+        </div>
+
+        <!-- Analytics Tab -->
+        <div id="analytics" class="tab-content active">
+            <div class="analytics-section">
+                <h2>Dashboard Analytics</h2>
+                
+                <!-- Date Range Filter -->
+                <div class="date-range-filter">
+                    <div>
+                        <label for="startDate">Start Date:</label>
+                        <input type="date" id="startDate">
+                    </div>
+                    <div>
+                        <label for="endDate">End Date:</label>
+                        <input type="date" id="endDate">
+                    </div>
+                    <button onclick="filterByDateRange()">📅 Filter</button>
+                    <button onclick="resetDateFilter()" style="background: #999;">Reset</button>
+                    <a href="/admin/api/analytics/export/csv" class="export-btn" style="text-decoration: none;">⬇️ Export CSV</a>
+                </div>
+                
+                <!-- Statistics Cards -->
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <h3>Total Downloads</h3>
+                        <div class="stat-value" id="total-downloads">-</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Unique Students</h3>
+                        <div class="stat-value" id="unique-students">-</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Peak Hour</h3>
+                        <div class="stat-value" id="peak-hour">-</div>
+                    </div>
+                </div>
+
+                <!-- Advanced Metrics -->
+                <div class="advanced-metrics" id="advancedMetrics" style="display: none;">
+                    <div class="metric-card">
+                        <h4>Average per Student</h4>
+                        <div class="metric-value" id="avg-per-student">-</div>
+                    </div>
+                    <div class="metric-card">
+                        <h4>Most Popular Certificate</h4>
+                        <div class="metric-value" id="popular-cert">-</div>
+                    </div>
+                </div>
+
+                <!-- Charts -->
+                <div class="charts-row">
+                    <div class="chart-container">
+                        <h3>Certificates by Type</h3>
+                        <canvas id="certTypeChart"></canvas>
+                    </div>
+                    <div class="chart-container">
+                        <h3>Top 5 Students</h3>
+                        <canvas id="topStudentsChart"></canvas>
+                    </div>
+                </div>
+
+                <div class="chart-container">
+                    <h3>Hourly Distribution</h3>
+                    <canvas id="hourlyChart"></canvas>
+                </div>
+
+                <div class="chart-container">
+                    <h3>Monthly Comparison (Last 6 Months)</h3>
+                    <canvas id="monthlyChart"></canvas>
+                </div>
+
+                <div class="chart-container">
+                    <h3>Downloads Trend (Last 30 Days)</h3>
+                    <canvas id="dailyTrendChart"></canvas>
+                </div>
             </div>
-            <form method="POST" action="{{ url_for('admin_search') }}" style="margin-bottom:25px;">
-                <input type="text" name="search_hallticket" placeholder="Search Hall Ticket Number"
-                    value="{{ search_query if search_query else '' }}" required
-                    style="padding:8px; border-radius:4px; border:1px solid #aaa;">
-                <button type="submit"
-                    style="padding:8px 15px; background:#6d0d86; color:rgb(255, 255, 255); border:none; border-radius:4px; cursor:pointer;">Search🔍</button>
-                {% if is_search %}
-                <a href="{{ url_for('admin_dashboard') }}" style="margin-left:10px; color:#000204;">Clear</a>
+        </div>
+
+        <!-- Logs Tab -->
+        <div id="logs" class="tab-content">
+            <h2>Payment & Certificate Logs</h2>
+            <div class="filter-section">
+                <!-- Admin Bulk Download -->
+                <div class="bulk-download-block">
+                    <form action="{{ url_for('download_all') }}" method="POST">
+                        <h3 style="margin-top: 0;">Bulk Download Certificates</h3>
+                        <label><input type="checkbox" name="admin_cert_types" value="all"> All Certificate Types</label><br>
+                        <label><input type="checkbox" name="admin_cert_types" value="Bonafide"> Bonafide</label><br>
+                        <label><input type="checkbox" name="admin_cert_types" value="Bonafide (scholarship purpose)">
+                            Bonafide Certificate[scholarship]</label><br>
+                        <label><input type="checkbox" name="admin_cert_types" value="Course Completion"> Course
+                            Completion</label><br>
+                        <label><input type="checkbox" name="admin_cert_types" value="Custodium"> Custodium</label><br>
+                        <label><input type="checkbox" name="admin_cert_types" value="Fee details for IT purpose"> Fee
+                            Details (IT)</label><br>
+                        <label><input type="checkbox" name="admin_cert_types" value="Fee structure for bank loan"> Fee
+                            Structure (Loan)</label><br>
+                        <button type="submit" class="bulk-download-btn">Download Selected</button>
+                    </form>
+                </div>
+                <form method="GET" action="{{ url_for('admin_dashboard') }}" style="margin-bottom:25px; display: flex; gap:8px; align-items: center;">
+                    <input type="text" name="hallticket" placeholder="Hall Ticket" value="{{ filters.hallticket if filters else '' }}" style="padding:8px; border-radius:4px; border:1px solid #aaa;">
+                    <select name="cert_type" style="padding:8px; border-radius:4px; border:1px solid #aaa;">
+                        <option value="">All Types</option>
+                        <option value="all" {% if filters and filters.cert_type=='all' %}selected{% endif %}>All (explicit)</option>
+                        <option value="Bonafide" {% if filters and filters.cert_type=='Bonafide' %}selected{% endif %}>Bonafide</option>
+                        <option value="Bonafide (scholarship purpose)" {% if filters and filters.cert_type=="Bonafide (scholarship purpose)" %}selected{% endif %}>Bonafide (scholarship)</option>
+                        <option value="Course Completion" {% if filters and filters.cert_type=='Course Completion' %}selected{% endif %}>Course Completion</option>
+                        <option value="Custodium" {% if filters and filters.cert_type=='Custodium' %}selected{% endif %}>Custodium</option>
+                        <option value="Fee details for IT purpose" {% if filters and filters.cert_type=='Fee details for IT purpose' %}selected{% endif %}>Fee Details (IT)</option>
+                        <option value="Fee structure for bank loan" {% if filters and filters.cert_type=='Fee structure for bank loan' %}selected{% endif %}>Fee Structure (Loan)</option>
+                    </select>
+                    <input type="text" name="transaction_id" placeholder="Transaction ID" value="{{ filters.transaction_id if filters else '' }}" style="padding:8px; border-radius:4px; border:1px solid #aaa;">
+                    <label style="font-size:0.9em; color:#333;">From</label>
+                    <input type="date" name="start_date" value="{{ filters.start_date if filters else '' }}" style="padding:8px; border-radius:4px; border:1px solid #aaa;">
+                    <label style="font-size:0.9em; color:#333;">To</label>
+                    <input type="date" name="end_date" value="{{ filters.end_date if filters else '' }}" style="padding:8px; border-radius:4px; border:1px solid #aaa;">
+                    <button type="submit" style="padding:8px 15px; background:#6d0d86; color:#fff; border:none; border-radius:4px; cursor:pointer;">Filter</button>
+                    <a href="{{ url_for('admin_dashboard') }}" style="margin-left:6px; color:#000204;">Clear</a>
+                    <a href="{{ url_for('export_logs', hallticket=(filters.hallticket if filters else ''), cert_type=(filters.cert_type if filters else ''), transaction_id=(filters.transaction_id if filters else ''), start_date=(filters.start_date if filters else ''), end_date=(filters.end_date if filters else '')) }}" class="export-btn" style="text-decoration:none; margin-left:8px;">⬇️ Export CSV</a>
+                </form>
+
+                <!-- Clear logs -->
+                <div class="clear-logs-block">
+                    <form action="{{ url_for('clear_logs_by_date') }}" method="POST">
+                        <label for="cutoff_date"><b>Clear logs before:</b></label>
+                        <input type="date" name="cutoff_date" required>
+                        <button class="clear-btn" type="submit">Clear Logs</button>
+                    </form>
+                </div>
+            </div>
+
+            {% if logs %}
+            <div style="margin-bottom:10px; color:#333;">Total logs: {{ pagination.total if pagination else (logs|length) }}</div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Hall Ticket</th>
+                        <th>Certificate Type</th>
+                        <th>Transaction ID</th>
+                        <th>Payment Proof</th>
+                        <th>Generated At</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for log in logs %}
+                    <tr>
+                        <td class="centered">{{ loop.index }}</td>
+                        <td>{{ log.student_hallticket }}</td>
+                        <td>{{ log.certificate_type }}</td>
+                        <td>{{ log.transaction_id if log.transaction_id else '-' }}</td>
+                        <td class="centered">
+                            {% if log.proof_filename %}
+                            <a href="{{ url_for('static', filename='uploads/' + log.proof_filename) }}" target="_blank">
+                                <img src="{{ url_for('static', filename='uploads/' + log.proof_filename) }}"
+                                    class="proof-img" alt="Payment Proof">
+                            </a>
+                            {% else %}
+                            -
+                            {% endif %}
+                        </td>
+                        <td>{{ log.downloaded_at.strftime('%d-%m-%Y %H:%M') }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% if pagination and pagination.pages > 1 %}
+            <div style="margin-top:12px; display:flex; gap:8px; align-items:center;">
+                {% if pagination.has_prev %}
+                <a href="{{ url_for('admin_dashboard', hallticket=(filters.hallticket if filters else ''), cert_type=(filters.cert_type if filters else ''), transaction_id=(filters.transaction_id if filters else ''), start_date=(filters.start_date if filters else ''), end_date=(filters.end_date if filters else ''), page=pagination.prev_num) }}" style="padding:6px 10px; background:#0e315f; color:#fff; border-radius:6px; text-decoration:none;">◀ Prev</a>
                 {% endif %}
-            </form>
-
-            <!-- Clear logs -->
-            <div class="clear-logs-block">
-                <form action="{{ url_for('clear_logs_by_date') }}" method="POST">
-                    <label for="cutoff_date"><b>Clear logs before:</b></label>
-                    <input type="date" name="cutoff_date" required>
-                    <button class="clear-btn" type="submit">Clear Logs</button>
-                </form>
+                <span>Page {{ pagination.page }} of {{ pagination.pages }}</span>
+                {% if pagination.has_next %}
+                <a href="{{ url_for('admin_dashboard', hallticket=(filters.hallticket if filters else ''), cert_type=(filters.cert_type if filters else ''), transaction_id=(filters.transaction_id if filters else ''), start_date=(filters.start_date if filters else ''), end_date=(filters.end_date if filters else ''), page=pagination.next_num) }}" style="padding:6px 10px; background:#0e315f; color:#fff; border-radius:6px; text-decoration:none;">Next ▶</a>
+                {% endif %}
             </div>
+            {% endif %}
+            {% else %}
+            <div class="no-logs-msg">
+                No certificates or payments logged yet.
+            </div>
+            {% endif %}
         </div>
-
-        {% if logs %}
-        <table>
-            <thead>
-                <tr>
-                    <th>#</th>
-                    <th>Hall Ticket</th>
-                    <th>Certificate Type</th>
-                    <th>Transaction ID</th>
-                    <th>Payment Proof</th>
-                    <th>Generated At</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for log in logs %}
-                <tr>
-                    <td class="centered">{{ loop.index }}</td>
-                    <td>{{ log.student_hallticket }}</td>
-                    <td>{{ log.certificate_type }}</td>
-                    <td>{{ log.transaction_id if log.transaction_id else '-' }}</td>
-                    <td class="centered">
-                        {% if log.proof_filename %}
-                        <a href="{{ url_for('static', filename='uploads/' + log.proof_filename) }}" target="_blank">
-                            <img src="{{ url_for('static', filename='uploads/' + log.proof_filename) }}"
-                                class="proof-img" alt="Payment Proof">
-                        </a>
-                        {% else %}
-                        -
-                        {% endif %}
-                    </td>
-                    <td>{{ log.downloaded_at.strftime('%d-%m-%Y %H:%M') }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-        {% else %}
-        <div class="no-logs-msg">
-            No certificates or payments logged yet.
-        </div>
-        {% endif %}
     </div>
+
+    <script>
+        // Tab switching
+        function showTab(tabName) {
+            // Hide all tabs
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+
+            // Show selected tab
+            document.getElementById(tabName).classList.add('active');
+            event.target.classList.add('active');
+
+            // Load analytics only when analytics tab is opened
+            if (tabName === 'analytics') {
+                loadAnalytics();
+                loadAdvancedAnalytics();
+            }
+        }
+
+        let charts = {};
+
+        function loadAnalytics() {
+            fetch('/admin/api/analytics')
+                .then(response => response.json())
+                .then(data => {
+                    updateStatistics(data);
+                    updateCharts(data);
+                })
+                .catch(error => console.error('Error loading analytics:', error));
+        }
+
+        function loadAdvancedAnalytics() {
+            fetch('/admin/api/analytics/advanced')
+                .then(response => response.json())
+                .then(data => {
+                    updateAdvancedMetrics(data);
+                    updateHourlyChart(data.hourly_distribution);
+                    updateMonthlyChart(data.monthly_comparison);
+                })
+                .catch(error => console.error('Error loading advanced analytics:', error));
+        }
+
+        function updateStatistics(data) {
+            document.getElementById('total-downloads').textContent = data.total_downloads;
+            document.getElementById('unique-students').textContent = data.unique_students;
+            document.getElementById('peak-hour').textContent = data.peak_hour;
+        }
+
+        function updateAdvancedMetrics(data) {
+            const metrics = data.success_metrics;
+            document.getElementById('avg-per-student').textContent = metrics.avg_per_student;
+            document.getElementById('popular-cert').textContent = metrics.most_popular_cert.substring(0, 20) + '...';
+            document.getElementById('advancedMetrics').style.display = 'grid';
+        }
+
+        function filterByDateRange() {
+            const startDate = document.getElementById('startDate').value;
+            const endDate = document.getElementById('endDate').value;
+
+            if (!startDate || !endDate) {
+                alert('Please select both start and end dates');
+                return;
+            }
+
+            fetch('/admin/api/analytics/date-range', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    start_date: startDate,
+                    end_date: endDate
+                })
+            })
+                .then(response => response.json())
+                .then(data => {
+                    alert(`Filtered Data:\n- Total Downloads: ${data.total_downloads}\n- Unique Students: ${data.unique_students}`);
+                })
+                .catch(error => console.error('Error:', error));
+        }
+
+        function resetDateFilter() {
+            document.getElementById('startDate').value = '';
+            document.getElementById('endDate').value = '';
+            loadAnalytics();
+            loadAdvancedAnalytics();
+        }
+
+        function updateCharts(data) {
+            // Certificate Type Chart
+            const certTypeCtx = document.getElementById('certTypeChart');
+            if (charts.certType) {
+                charts.certType.destroy();
+            }
+            charts.certType = new Chart(certTypeCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: Object.keys(data.cert_type_data),
+                    datasets: [{
+                        data: Object.values(data.cert_type_data),
+                        backgroundColor: [
+                            '#FF6384',
+                            '#36A2EB',
+                            '#FFCE56',
+                            '#4BC0C0',
+                            '#9966FF',
+                            '#FF9F40',
+                            '#FF6384'
+                        ]
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'right'
+                        }
+                    }
+                }
+            });
+
+            // Top Students Chart
+            const topStudentsCtx = document.getElementById('topStudentsChart');
+            if (charts.topStudents) {
+                charts.topStudents.destroy();
+            }
+            charts.topStudents = new Chart(topStudentsCtx, {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(data.top_students),
+                    datasets: [{
+                        label: 'Downloads',
+                        data: Object.values(data.top_students),
+                        backgroundColor: '#4caf50'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    indexAxis: 'y',
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    }
+                }
+            });
+
+            // Daily Trend Chart
+            const dailyTrendCtx = document.getElementById('dailyTrendChart');
+            if (charts.dailyTrend) {
+                charts.dailyTrend.destroy();
+            }
+            charts.dailyTrend = new Chart(dailyTrendCtx, {
+                type: 'line',
+                data: {
+                    labels: Object.keys(data.daily_data),
+                    datasets: [{
+                        label: 'Downloads',
+                        data: Object.values(data.daily_data),
+                        borderColor: '#0e315f',
+                        backgroundColor: 'rgba(14, 49, 95, 0.1)',
+                        tension: 0.4,
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateHourlyChart(hourlyData) {
+            const hourlyCtx = document.getElementById('hourlyChart');
+            if (charts.hourly) {
+                charts.hourly.destroy();
+            }
+            charts.hourly = new Chart(hourlyCtx, {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(hourlyData),
+                    datasets: [{
+                        label: 'Downloads',
+                        data: Object.values(hourlyData),
+                        backgroundColor: '#FF9F40'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateMonthlyChart(monthlyData) {
+            const monthlyCtx = document.getElementById('monthlyChart');
+            if (charts.monthly) {
+                charts.monthly.destroy();
+            }
+            charts.monthly = new Chart(monthlyCtx, {
+                type: 'line',
+                data: {
+                    labels: Object.keys(monthlyData),
+                    datasets: [{
+                        label: 'Downloads',
+                        data: Object.values(monthlyData),
+                        borderColor: '#4BC0C0',
+                        backgroundColor: 'rgba(75, 192, 192, 0.1)',
+                        tension: 0.4,
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+        }
+
+        // Load analytics on page load
+        document.addEventListener('DOMContentLoaded', loadAnalytics);
+    </script>
 </body>
 
 </html>

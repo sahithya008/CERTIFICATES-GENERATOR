@@ -1,109 +1,364 @@
-# 🎓 Student Certificate Generator System  
+# Student Certificate Generator System 🎓
 
-🚀 **A Flask-based web application that automates student certificate generation** — making processes like Bonafide, Course Completion, and Fee Structure certificates faster, paperless, and error-free.
-
----
-
-## 💡 Overview  
-
-Educational institutions often issue student certificates manually — which is time-consuming and prone to errors.  
-This system automates the **entire process** using **Flask**, integrating student data from Excel or a database, validating eligibility, and generating professional **PDF certificates instantly.**
+A lightweight Flask web application that automates generation of student certificates (Bonafide, Course Completion, Fee details, Custodium, etc.) using Excel-based student data and on-the-fly PDF creation.
 
 ---
 
-## ⚙️ Features  
+## Table of contents
 
-- 🧑‍🎓 Student Portal for requesting certificates  
-- ✅ Automatic eligibility validation  
-- 📄 PDF certificate generation using **ReportLab**  
-- 👩‍💼 Admin dashboard for approval & management  
-- 💾 Excel and SQLite database integration  
-- 🔒 Secure session-based access  
-- ☁️ Deployment-ready with **Gunicorn**
-
----
-
-## 🧰 Tech Stack  
-
-| Category | Tools |
-|-----------|-------|
-| Language | Python |
-| Framework | Flask |
-| Frontend | HTML, CSS, Jinja2 |
-| Database | SQLite + Excel (via Pandas, OpenPyXL) |
-| PDF Engine | ReportLab |
-| Server | Gunicorn |
-| Tools | VS Code, Git, GitHub |
+- Overview
+- Features
+- Quick start
+- Manual tests & verification
+- Automated tests
+- Managing student data
+- Admin access
+- Troubleshooting
+- Contributing
+- License & Maintainer
 
 ---
 
-## 🧠 How It Works  
+## Overview
 
-1. 🎓 Student enters hall ticket & selects certificates  
-2. 🧩 Flask validates eligibility using student data  
-3. ⚙️ Eligible requests generate PDF certificates  
-4. 👩‍💼 Admin can approve, search, and manage requests  
-
-```text
-Student UI → Flask Backend → Eligibility Check → PDF Generation → Admin Dashboard
-````
+This application streamlines certificate issuance for educational institutions. It validates student eligibility from a maintained Excel spreadsheet and generates PDF certificates using ReportLab. Admins can review and perform bulk downloads; all download events are logged to a SQLite database.
 
 ---
 
-## 📊 System Architecture
+## Features
 
-**Frontend:** HTML, CSS, Jinja2
-**Backend:** Flask (Python), SQLAlchemy ORM
-**Database:** SQLite + Excel
-**PDF Engine:** ReportLab
-
----
-
-## 🔮 Future Enhancements
-
-* 📧 Email/OTP-based student login
-* 💳 Payment gateway integration (Razorpay/Stripe)
-* 🔏 Digital signature & QR verification
-* 🗄️ Migration from Excel → MySQL/PostgreSQL
-* 📊 Role-based access for multiple admins
+- Web UI for student requests and admin dashboard
+- Eligibility checks based on student status
+- PDF generation for individual or bulk certificates
+- Upload support for payment proof images
+- Audit logs stored in SQLite (`downloads.db`)
+- Simple data source: `student_certificates.xlsx` (editable spreadsheet)
 
 ---
 
-## 📂 Project Structure
+## Quick start (minimal)
 
+Prerequisites: Python 3.10+, git
+
+1. Clone the repository and enter the project folder:
+
+   ```bash
+   git clone <repo-url>
+   cd CERTIFICATES-GENERATOR
+   ```
+
+2. Create and activate a virtual environment:
+
+   Linux / macOS:
+   ```bash
+   python3 -m venv venv
+   source venv/bin/activate
+   ```
+
+   Windows (PowerShell):
+   ```powershell
+   python -m venv venv
+   .\venv\Scripts\Activate.ps1
+   ```
+
+3. Install dependencies:
+
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+4. (Optional) Set admin credentials: in `app.py` set `ADMIN_USERNAME` and `ADMIN_PASSWORD`.
+
+5. Run the application:
+
+   ```bash
+   python app.py
+   # Open http://localhost:5000/
+   ```
+
+---
+
+## New in this fork — Feature 1 of 4 ✅
+
+**Admin API — Programmatic student creation**
+
+A concise, authenticated API endpoint has been added in this fork to allow administrators to add students directly to the project's canonical Excel data source (`student_certificates.xlsx`). This capability is intended to make onboarding, bulk provisioning, and scripted workflows easy without manual spreadsheet edits.
+
+- **Endpoint:** `POST /admin/api/students` (JSON)
+- **Authentication:** Admin session (via `/admin` login) or HTTP Basic Auth using `ADMIN_USERNAME` / `ADMIN_PASSWORD`.
+- **Required fields:** `HALLTICKET`, `NAME`, `STATUS` (one of `STUDYING`, `COMPLETED`, `PASSOUT`). Additional columns present in the spreadsheet can be supplied and will be preserved if present.
+
+Example usage (Basic Auth):
+
+```bash
+curl -X POST -u "$ADMIN_USERNAME:$ADMIN_PASSWORD" \
+  -H "Content-Type: application/json" \
+  -d '{"HALLTICKET":"HT2025EX","NAME":"Demo Student","STATUS":"STUDYING"}' \
+  http://localhost:5000/admin/api/students
 ```
-📦 CERTIFICATES-GENERATOR
- ┣ 📜 app.py
- ┣ 📁 templates/
- ┣ 📁 static/
- ┣ 📊 student_certificates.xlsx
- ┣ 🗃 downloads.db
- ┣ 📄 requirements.txt
- ┗ 📄 README.md
+
+Response: `201 Created` with a JSON body `{ "success": true, "student": { ... } }` on success; errors return a JSON `error` message and an appropriate HTTP status.
+
+---
+
+## New in this fork — Feature 2 ✅
+
+**Logs: Search, Filter, Pagination & CSV Export**
+
+This feature enhances the admin `Logs` view with interactive, user-facing capabilities to inspect certificate generation and payment events.
+
+What was added:
+- **Search / filter fields** on the Logs tab: Hall Ticket (partial match), Certificate Type, Transaction ID, and a date range (From / To).
+- **Server-side pagination** with 20 entries per page and Prev / Next controls that preserve filters.
+- **CSV export endpoint** to download filtered logs: `GET /admin/export_logs` (available from the Logs UI as **⬇️ Export CSV**).
+- **Preserves admin session** and requires admin login to access export or filter functionality.
+
+How to use (manual):
+1. Login as admin at `/admin` (default dev credentials in `app.py` are `admin` / `admin123`).
+2. Open the **Logs** tab and use the inputs to filter by Hall Ticket, Certificate Type, Transaction ID, and date range.
+3. Click **Filter** to apply the filters. Use the pagination controls to navigate pages.
+4. Click **⬇️ Export CSV** to download the currently-filtered rows as a CSV file.
+
+Programmatic export example (curl with cookies):
+
+```bash
+# login and save cookies
+curl -s -c cookies.txt -X POST -d "username=admin&password=admin123" http://localhost:5000/admin -L
+
+# download CSV using the same cookies and filters (sample: hallticket=HT2025EX)
+curl -s -b cookies.txt "http://localhost:5000/admin/export_logs?hallticket=HT2025EX&start_date=2025-01-01&end_date=2025-12-31" -o exported_logs.csv
 ```
 
+Notes for testers:
+- Filters use SQL LIKE for partial matching on Hall Ticket and Transaction ID.
+- Date inputs expect `YYYY-MM-DD` and end date is inclusive.
+- Export requires an authenticated admin session.
+
+
+### This fork roadmap (short)
+
+- **Feature 1 (this PR):** Admin API — add student (programmatic) ✅
+- **Feature 2 (this PR):** Logs search/filter/pagination/export ✅
+- **Planned Feature 3:** Admin UI for student management (create/edit rows from the dashboard)
+- **Planned Feature 4:** Bulk CSV import + template editor
+
+> Note: This repository is maintained in the fork and the above features are being added incrementally and documented in each PR.
 ---
 
-## 🧮 Results & Impact
+### This fork roadmap (short)
 
-| Metric                                | Goal           |
-| ------------------------------------- | -------------- |
-| ⏱ Average certificate generation time | < 3 seconds    |
-| ⚡ Validation accuracy                 | 100%           |
-| 💻 Supported student records          | 500+           |
-| ✅ User satisfaction                   | > 90% positive |
+- **Feature 1 (this PR):** Admin API — add student (programmatic) ✅
+- **Planned Feature 2:** Admin UI for student management (create/edit rows from the dashboard)
+- **Planned Feature 3:** CSV/Excel import endpoint for bulk student uploads
+
+> Note: This repository is maintained in the fork and the above feature is the first official enhancement added here; the next two features will be added iteratively and documented in subsequent PRs.
 
 ---
 
-## 🧑‍💻 Developer
+## Manual tests & verification
 
-**👋 Sahithya**
-🎓 B.Tech Student
-🔗 [GitHub Profile](https://github.com/sahithya008)
-🔗[LinkedIn](www.linkedin.com/in/sahithyamanmadi)
+- Home page loads at `/`.
+- Check status for a hall ticket (replace `<HALLTICKET>`):
+
+  ```bash
+  curl -s http://localhost:5000/check_status/<HALLTICKET>
+  ```
+
+  Expected result: JSON with `status` (e.g., `STUDYING`, `COMPLETED`, `PASSOUT`, or `invalid`).
+
+- Request a certificate via the UI:
+  - Enter a valid hall ticket, select certificate(s), proceed to payment.
+  - On `/payment`, upload a payment proof image and provide a transaction ID.
+  - After submission, a PDF (single) or ZIP (multiple) should download.
+  - Uploaded proofs are stored in `static/uploads` and logs are recorded in `downloads.db`.
+
+- Admin functionality (after setting credentials):
+  - Login at `/admin`, search download logs, perform bulk download, or clear logs by date.
+
+### Admin API — Add student (programmatic)
+
+A simple authenticated API is available to add a student row to `student_certificates.xlsx`.
+
+Endpoint: `POST /admin/api/students`
+
+- Authentication: Either an active admin session (log in via `/admin`) or HTTP Basic Auth using `ADMIN_USERNAME` and `ADMIN_PASSWORD`.
+- Payload (JSON): at minimum include `HALLTICKET`, `NAME`, and `STATUS` (one of `STUDYING`, `COMPLETED`, `PASSOUT`). Additional columns present in the spreadsheet will be preserved if provided.
+
+Example (using basic auth):
+
+```bash
+curl -X POST -u "$ADMIN_USERNAME:$ADMIN_PASSWORD" \
+  -H "Content-Type: application/json" \
+  -d '{"HALLTICKET":"HT2025EX","NAME":"Demo Student","STATUS":"STUDYING"}' \
+  http://localhost:5000/admin/api/students
+```
+
+Response: `201 Created` with `{ "success": true, "student": { ... } }` on success. Errors return JSON with `error` and appropriate 4xx/5xx code.
+
 ---
+
+## Automated tests
+
+The repository supports Pytest-based tests. Example commands:
+
+```bash
+pip install pytest pytest-flask
+pytest -q
+```
+
+Suggested test coverage:
+
+- Unit tests for `parse_fee`, `is_cert_eligible`, and `create_certificate` behaviors
+- Endpoint tests for `/check_status/<hallticket>`, `/payment` (form validation), and `/verify_payment` (file upload flow)
+
+A minimal example test file can be added at `tests/test_basic.py` to validate key behaviors and endpoints.
+
+---
+
+## Managing student data
+
+- Student data is kept in `student_certificates.xlsx`.
+- Required columns (recommended): `HALLTICKET`, `NAME`, `STATUS` (`STUDYING` | `COMPLETED` | `PASSOUT`).
+- To add a student: edit the spreadsheet directly and restart the application to reload data.
+
+Optional helper script pattern (Python + pandas) can be added to automate insertion of rows.
+
+---
+
+## Admin access & configuration
+
+- Admin credentials are configured in `app.py` using `ADMIN_USERNAME` and `ADMIN_PASSWORD` (plain values for local/dev use).
+- For production, environment variables or a secrets manager is recommended.
+
+---
+
+## Troubleshooting
+
+- Excel load errors: confirm `openpyxl` is installed and `student_certificates.xlsx` is present and well-formed.
+- Database schema changes: delete `downloads.db` and restart the app to recreate tables.
+- If the web form seems unresponsive: open browser devtools (Console and Network) to inspect form submission and view server logs for flash messages or exceptions.
+
+---
+
+## Contributing
+
+1. Fork the repository and create a feature branch.
+2. Open pull requests with clear descriptions and test coverage where appropriate.
+3. Use GitHub issues to report bugs or request enhancements.
+
+---
+
+## License & Maintainer
+
+- License: see `LICENSE` file in the repository (if present).
+- Maintainer: project maintainer (for support or contributions, please open an issue on the repository).
+
+---
+
+*This README provides concise, third‑person documentation to set up, test, and contribute to the project.*
 
 ## 🔗 Repository
 
 📎 **GitHub Repo:** [CERTIFICATES-GENERATOR](https://github.com/sahithya008/CERTIFICATES-GENERATOR)
 ⭐ *If you like this project, consider giving it a star!*
+
+---
+
+## ✅ Quick Testing & Quick Start
+
+Follow these minimal steps to set up, run and test the app locally.
+
+### 1) Create & activate virtual environment
+
+- Linux/macOS:
+
+  ```bash
+  python3 -m venv venv
+  source venv/bin/activate
+  ```
+
+- Windows (PowerShell):
+
+  ```powershell
+  python -m venv venv
+  .\venv\Scripts\Activate.ps1
+  # If blocked: Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process
+  ```
+
+### 2) Install dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+### 3) (Optional) Set admin credentials
+
+Open `app.py` and set **ADMIN_USERNAME** and **ADMIN_PASSWORD** (they are blank by default) so you can use the admin dashboard.
+
+### 4) Run the app
+
+```bash
+python app.py
+# Open http://localhost:5000/ in a browser
+```
+
+### 5) Manual smoke tests
+
+- Home page loads at `/` ✅
+- Check a hallticket status (replace `<HALLTICKET>`):
+  ```bash
+  curl -s http://localhost:5000/check_status/<HALLTICKET>
+  ```
+- Request a certificate via the web UI:
+  - Enter a valid `HALLTICKET`, select one or more certificates and click **Proceed to Payment**
+  - On `/payment` upload a small image (transaction proof) and a transaction id
+  - Submit and confirm a PDF (single) or a ZIP (multiple) is downloaded
+- Confirm upload saved under `static/uploads` and a log entry exists in `downloads.db`
+
+### 6) Add a student (quick)
+
+- Manually open `student_certificates.xlsx` and add a row with at least these columns:
+  - `HALLTICKET`, `NAME`, `STATUS` (use `STUDYING` / `COMPLETED` / `PASSOUT`)
+- Save the file and **restart** the app so it reloads the Excel data.
+
+> Tip: Use the `curl /check_status/<HALLTICKET>` command above to verify the new entry.
+
+### 7) Run automated tests (optional)
+
+- Install test tools:
+
+```bash
+pip install pytest pytest-flask
+```
+
+- Example tests (create `tests/test_basic.py`):
+
+```python
+import io
+from app import app, is_cert_eligible
+
+def test_is_cert_eligible():
+    assert is_cert_eligible("Bonafide", "STUDYING", "") is True
+    assert is_cert_eligible("Course Completion", "STUDYING", "") is False
+
+def test_check_status_endpoint():
+    client = app.test_client()
+    rv = client.get("/check_status/invalid_ticket")
+    assert rv.status_code == 200
+    assert b'invalid' in rv.data
+```
+
+- Run tests:
+
+```bash
+pytest -q
+```
+
+### 8) Troubleshooting
+
+- If Excel fails to load: confirm `openpyxl` is installed and `student_certificates.xlsx` exists.
+- If DB schema errors appear after modifying models: delete `downloads.db` and restart the app to recreate it.
+- If the form appears to do nothing: open browser devtools (Console & Network) to verify the POST request to `/payment` and check server logs for flash messages.
+
+---
+

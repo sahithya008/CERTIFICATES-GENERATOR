@@ -1,16 +1,17 @@
-from flask import Flask, flash, render_template, request, send_file, redirect, url_for, session, jsonify
+from flask import Flask, flash, render_template, request, send_file, redirect, url_for, session, jsonify, make_response
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak, Indenter
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.lib.units import cm
-from io import BytesIO
+from io import BytesIO, StringIO
 import datetime
 import os
 import pandas as pd
 import html
 import zipfile
 from flask_sqlalchemy import SQLAlchemy
+from analytics_service import create_analytics_service
 
 app = Flask(__name__)
 app.secret_key = "yoursecretkey"
@@ -25,8 +26,8 @@ app.config["UPLOAD_FOLDER"] = "static/uploads"
 os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
 
 # Admin credentials
-ADMIN_USERNAME = " "
-ADMIN_PASSWORD = " "
+ADMIN_USERNAME = "admin"
+ADMIN_PASSWORD = "admin123"
 
 # Excel setup
 EXCEL_FILE = "student_certificates.xlsx"
@@ -73,6 +74,9 @@ with app.app_context():
         db.create_all()
         print("Database migration completed successfully!")
 
+# Initialize analytics service
+analytics_service = create_analytics_service(db, CertificateDownload)
+
 def is_cert_eligible(cert_type: str, status: str, purpose: str) -> bool:
     if status is None:
         return False
@@ -101,15 +105,13 @@ def is_cert_eligible(cert_type: str, status: str, purpose: str) -> bool:
 def admin_search():
     if not session.get("admin"):
         return redirect(url_for("admin_login"))
-    logs = []
-    query = ""
+    # Redirect POST search to the dashboard with a query param so filters are unified
     if request.method == "POST":
-        query = request.form["search_hallticket"].strip()
+        query = request.form.get("search_hallticket", "").strip()
         if query:
-            logs = CertificateDownload.query.filter(
-                CertificateDownload.student_hallticket.like(f"%{query}%")
-            ).order_by(CertificateDownload.downloaded_at.desc()).all()
-    return render_template("admin_dashboard.html", logs=logs, search_query=query, is_search=True)
+            return redirect(url_for("admin_dashboard", hallticket=query))
+    # For GET, simply redirect to dashboard
+    return redirect(url_for("admin_dashboard"))
 
 @app.route("/")
 def home():
@@ -141,8 +143,144 @@ def admin_login():
 def admin_dashboard():
     if not session.get("admin"):
         return redirect(url_for("admin_login"))
-    logs = CertificateDownload.query.order_by(CertificateDownload.downloaded_at.desc()).all()
-    return render_template("admin_dashboard.html", logs=logs)
+    # Filters via query params
+    hallticket = request.args.get("hallticket", type=str, default="")
+    cert_type = request.args.get("cert_type", type=str, default="")
+    transaction_id = request.args.get("transaction_id", type=str, default="")
+    start_date = request.args.get("start_date", type=str, default="")
+    end_date = request.args.get("end_date", type=str, default="")
+    page = request.args.get("page", default=1, type=int)
+    per_page = 20
+
+    query = CertificateDownload.query
+
+    if hallticket:
+        query = query.filter(CertificateDownload.student_hallticket.like(f"%{hallticket}%"))
+    if cert_type and cert_type.lower() != "all":
+        query = query.filter(CertificateDownload.certificate_type == cert_type)
+    if transaction_id:
+        query = query.filter(CertificateDownload.transaction_id.like(f"%{transaction_id}%"))
+    # date range filtering
+    try:
+        if start_date:
+            sd = datetime.datetime.strptime(start_date, "%Y-%m-%d")
+            query = query.filter(CertificateDownload.downloaded_at >= sd)
+        if end_date:
+            ed = datetime.datetime.strptime(end_date, "%Y-%m-%d") + datetime.timedelta(days=1)
+            query = query.filter(CertificateDownload.downloaded_at < ed)
+    except Exception:
+        # ignore parse errors and proceed without date filtering
+        pass
+
+    pagination = query.order_by(CertificateDownload.downloaded_at.desc()).paginate(page=page, per_page=per_page, error_out=False)
+    logs = pagination.items
+
+    current_filters = {
+        "hallticket": hallticket,
+        "cert_type": cert_type,
+        "transaction_id": transaction_id,
+        "start_date": start_date,
+        "end_date": end_date,
+        "page": page,
+        "per_page": per_page
+    }
+
+    return render_template("admin_dashboard.html", logs=logs, pagination=pagination, filters=current_filters)
+
+@app.route("/admin/api/analytics")
+def get_analytics():
+    """API endpoint to fetch dashboard analytics data."""
+    if not session.get("admin"):
+        return jsonify({"error": "unauthorized"}), 401
+    
+    try:
+        # Use analytics service for data aggregation
+        total_downloads = analytics_service.get_total_downloads()
+        unique_students = analytics_service.get_unique_students()
+        cert_type_data = analytics_service.get_certificate_type_distribution()
+        daily_data = analytics_service.get_daily_downloads(days=30)
+        peak_hour = analytics_service.get_peak_hour()
+        top_students_data = analytics_service.get_top_students(limit=5)
+        
+        return jsonify({
+            "total_downloads": total_downloads,
+            "unique_students": unique_students,
+            "cert_type_data": cert_type_data,
+            "daily_data": daily_data,
+            "peak_hour": peak_hour,
+            "top_students": top_students_data
+        })
+    except Exception as e:
+        print(f"Error in get_analytics: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/admin/api/analytics/advanced")
+def get_advanced_analytics():
+    """Advanced analytics endpoint with extended metrics."""
+    if not session.get("admin"):
+        return jsonify({"error": "unauthorized"}), 401
+    
+    try:
+        hourly_dist = analytics_service.get_hourly_distribution()
+        monthly_data = analytics_service.get_monthly_comparison(months=6)
+        success_rate = analytics_service.get_certificate_success_rate()
+        
+        return jsonify({
+            "hourly_distribution": hourly_dist,
+            "monthly_comparison": monthly_data,
+            "success_metrics": success_rate
+        })
+    except Exception as e:
+        print(f"Error in get_advanced_analytics: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/admin/api/analytics/date-range", methods=["POST"])
+def get_analytics_by_range():
+    """Get analytics for a specific date range."""
+    if not session.get("admin"):
+        return jsonify({"error": "unauthorized"}), 401
+    
+    try:
+        data = request.get_json()
+        start_date = data.get("start_date")
+        end_date = data.get("end_date")
+        
+        if not start_date or not end_date:
+            return jsonify({"error": "Missing start_date or end_date"}), 400
+        
+        analytics = analytics_service.get_analytics_by_date_range(start_date, end_date)
+        return jsonify(analytics)
+    except Exception as e:
+        print(f"Error in get_analytics_by_range: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/admin/api/analytics/export/csv")
+def export_analytics_csv():
+    """Export analytics data as CSV."""
+    if not session.get("admin"):
+        return jsonify({"error": "unauthorized"}), 401
+    
+    try:
+        csv_data = analytics_service.export_data_csv()
+        
+        # Create file-like object
+        output = StringIO()
+        output.write(csv_data)
+        output.seek(0)
+        
+        return send_file(
+            BytesIO(csv_data.encode()),
+            mimetype="text/csv",
+            as_attachment=True,
+            download_name=f"analytics_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        )
+    except Exception as e:
+        print(f"Error in export_analytics_csv: {e}")
+        return jsonify({"error": str(e)}), 500
+
 
 @app.route("/logout")
 def logout():
@@ -331,6 +469,129 @@ def clear_logs_by_date():
             print("Error clearing logs:", e)
             flash("❌ Error clearing logs.", "danger")
     return redirect(url_for("admin_dashboard"))
+
+
+@app.route('/admin/export_logs')
+def export_logs():
+    if not session.get("admin"):
+        return redirect(url_for("admin_login"))
+
+    # Accept same query params as admin_dashboard
+    hallticket = request.args.get("hallticket", type=str, default="")
+    cert_type = request.args.get("cert_type", type=str, default="")
+    transaction_id = request.args.get("transaction_id", type=str, default="")
+    start_date = request.args.get("start_date", type=str, default="")
+    end_date = request.args.get("end_date", type=str, default="")
+
+    query = CertificateDownload.query
+    if hallticket:
+        query = query.filter(CertificateDownload.student_hallticket.like(f"%{hallticket}%"))
+    if cert_type and cert_type.lower() != "all":
+        query = query.filter(CertificateDownload.certificate_type == cert_type)
+    if transaction_id:
+        query = query.filter(CertificateDownload.transaction_id.like(f"%{transaction_id}%"))
+    try:
+        if start_date:
+            sd = datetime.datetime.strptime(start_date, "%Y-%m-%d")
+            query = query.filter(CertificateDownload.downloaded_at >= sd)
+        if end_date:
+            ed = datetime.datetime.strptime(end_date, "%Y-%m-%d") + datetime.timedelta(days=1)
+            query = query.filter(CertificateDownload.downloaded_at < ed)
+    except Exception:
+        pass
+
+    rows = query.order_by(CertificateDownload.downloaded_at.desc()).all()
+
+    # Build CSV
+    import csv
+    si = StringIO()
+    writer = csv.writer(si)
+    writer.writerow(["id", "student_hallticket", "certificate_type", "transaction_id", "proof_filename", "downloaded_at"])
+    for r in rows:
+        writer.writerow([r.id, r.student_hallticket, r.certificate_type, r.transaction_id or "", r.proof_filename or "", r.downloaded_at.strftime("%Y-%m-%d %H:%M:%S")])
+
+    output = make_response(si.getvalue())
+    output.headers["Content-Disposition"] = f"attachment; filename=logs_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+    output.headers["Content-Type"] = "text/csv"
+    return output
+
+
+def _check_admin_auth():
+    """Return True if the request is authenticated as admin via session or basic-auth."""
+    # Session-based authentication (from admin login)
+    if session.get("admin"):
+        return True
+    # HTTP Basic Auth fallback
+    auth = request.authorization
+    if auth and auth.username == ADMIN_USERNAME and auth.password == ADMIN_PASSWORD:
+        return True
+    return False
+
+
+@app.route('/admin/api/students', methods=['POST'])
+def admin_api_add_student():
+    """Add a student row to the Excel data source.
+
+    Authentication: session admin or HTTP Basic auth matching ADMIN_USERNAME / ADMIN_PASSWORD.
+
+    Expected JSON payload (application/json):
+      {
+        "HALLTICKET": "string",
+        "NAME": "string",
+        "STATUS": "STUDYING" | "COMPLETED" | "PASSOUT",
+        ... optional other columns ...
+      }
+
+    Returns JSON {"success": True, "student": {...}} on 201 or error message with 4xx code.
+    """
+    if not _check_admin_auth():
+        return jsonify({"error": "unauthorized"}), 401
+
+    payload = request.get_json(force=True, silent=True)
+    if not payload or not isinstance(payload, dict):
+        return jsonify({"error": "invalid JSON payload"}), 400
+
+    required = ["HALLTICKET", "NAME", "STATUS"]
+    missing = [r for r in required if not payload.get(r)]
+    if missing:
+        return jsonify({"error": f"missing required fields: {', '.join(missing)}"}), 400
+
+    hall = str(payload.get("HALLTICKET")).strip()
+    status = str(payload.get("STATUS")).strip().upper()
+    if status not in ("STUDYING", "COMPLETED", "PASSOUT"):
+        return jsonify({"error": "invalid STATUS. Use STUDYING, COMPLETED, or PASSOUT"}), 400
+
+    # Use global students variable and prevent duplicate hallticket
+    global students
+    if hall in students["HALLTICKET"].astype(str).values:
+        return jsonify({"error": "HALLTICKET already exists"}), 400
+
+    # Append row to Excel file
+    try:
+        df = pd.read_excel(EXCEL_FILE, engine="openpyxl")
+    except Exception as e:
+        return jsonify({"error": f"failed to read Excel: {e}"}), 500
+
+    new_row = {k: payload.get(k, "") for k in df.columns}
+    # Ensure mandatory fields are set even if columns missing
+    new_row.update({"HALLTICKET": hall, "NAME": payload.get("NAME", ""), "STATUS": status})
+
+    try:
+        df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+        df.to_excel(EXCEL_FILE, index=False, engine="openpyxl")
+    except Exception as e:
+        return jsonify({"error": f"failed to write to Excel: {e}"}), 500
+
+    # Reload in-memory students DataFrame
+    try:
+        students = pd.read_excel(EXCEL_FILE, engine="openpyxl")
+        students.columns = [c.strip() for c in students.columns]
+    except Exception:
+        # If reload fails, we still added the row to disk. Log and continue.
+        print("Warning: failed to reload students DataFrame after adding student")
+
+    return jsonify({"success": True, "student": {"HALLTICKET": hall, "NAME": payload.get("NAME", ""), "STATUS": status}}), 201
+
 
 def create_certificate(cert_type, student, hallticketno, purpose=""):
     def safe_get(col):
