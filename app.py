@@ -1,4 +1,4 @@
-from flask import Flask, flash, render_template, request, send_file, redirect, url_for, session, jsonify
+from flask import Flask, flash, render_template, request, send_file, redirect, url_for, session, jsonify, make_response
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak, Indenter
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.pagesizes import A4
@@ -105,15 +105,13 @@ def is_cert_eligible(cert_type: str, status: str, purpose: str) -> bool:
 def admin_search():
     if not session.get("admin"):
         return redirect(url_for("admin_login"))
-    logs = []
-    query = ""
+    # Redirect POST search to the dashboard with a query param so filters are unified
     if request.method == "POST":
-        query = request.form["search_hallticket"].strip()
+        query = request.form.get("search_hallticket", "").strip()
         if query:
-            logs = CertificateDownload.query.filter(
-                CertificateDownload.student_hallticket.like(f"%{query}%")
-            ).order_by(CertificateDownload.downloaded_at.desc()).all()
-    return render_template("admin_dashboard.html", logs=logs, search_query=query, is_search=True)
+            return redirect(url_for("admin_dashboard", hallticket=query))
+    # For GET, simply redirect to dashboard
+    return redirect(url_for("admin_dashboard"))
 
 @app.route("/")
 def home():
@@ -145,8 +143,49 @@ def admin_login():
 def admin_dashboard():
     if not session.get("admin"):
         return redirect(url_for("admin_login"))
-    logs = CertificateDownload.query.order_by(CertificateDownload.downloaded_at.desc()).all()
-    return render_template("admin_dashboard.html", logs=logs)
+    # Filters via query params
+    hallticket = request.args.get("hallticket", type=str, default="")
+    cert_type = request.args.get("cert_type", type=str, default="")
+    transaction_id = request.args.get("transaction_id", type=str, default="")
+    start_date = request.args.get("start_date", type=str, default="")
+    end_date = request.args.get("end_date", type=str, default="")
+    page = request.args.get("page", default=1, type=int)
+    per_page = 20
+
+    query = CertificateDownload.query
+
+    if hallticket:
+        query = query.filter(CertificateDownload.student_hallticket.like(f"%{hallticket}%"))
+    if cert_type and cert_type.lower() != "all":
+        query = query.filter(CertificateDownload.certificate_type == cert_type)
+    if transaction_id:
+        query = query.filter(CertificateDownload.transaction_id.like(f"%{transaction_id}%"))
+    # date range filtering
+    try:
+        if start_date:
+            sd = datetime.datetime.strptime(start_date, "%Y-%m-%d")
+            query = query.filter(CertificateDownload.downloaded_at >= sd)
+        if end_date:
+            ed = datetime.datetime.strptime(end_date, "%Y-%m-%d") + datetime.timedelta(days=1)
+            query = query.filter(CertificateDownload.downloaded_at < ed)
+    except Exception:
+        # ignore parse errors and proceed without date filtering
+        pass
+
+    pagination = query.order_by(CertificateDownload.downloaded_at.desc()).paginate(page=page, per_page=per_page, error_out=False)
+    logs = pagination.items
+
+    current_filters = {
+        "hallticket": hallticket,
+        "cert_type": cert_type,
+        "transaction_id": transaction_id,
+        "start_date": start_date,
+        "end_date": end_date,
+        "page": page,
+        "per_page": per_page
+    }
+
+    return render_template("admin_dashboard.html", logs=logs, pagination=pagination, filters=current_filters)
 
 @app.route("/admin/api/analytics")
 def get_analytics():
@@ -430,6 +469,51 @@ def clear_logs_by_date():
             print("Error clearing logs:", e)
             flash("❌ Error clearing logs.", "danger")
     return redirect(url_for("admin_dashboard"))
+
+
+@app.route('/admin/export_logs')
+def export_logs():
+    if not session.get("admin"):
+        return redirect(url_for("admin_login"))
+
+    # Accept same query params as admin_dashboard
+    hallticket = request.args.get("hallticket", type=str, default="")
+    cert_type = request.args.get("cert_type", type=str, default="")
+    transaction_id = request.args.get("transaction_id", type=str, default="")
+    start_date = request.args.get("start_date", type=str, default="")
+    end_date = request.args.get("end_date", type=str, default="")
+
+    query = CertificateDownload.query
+    if hallticket:
+        query = query.filter(CertificateDownload.student_hallticket.like(f"%{hallticket}%"))
+    if cert_type and cert_type.lower() != "all":
+        query = query.filter(CertificateDownload.certificate_type == cert_type)
+    if transaction_id:
+        query = query.filter(CertificateDownload.transaction_id.like(f"%{transaction_id}%"))
+    try:
+        if start_date:
+            sd = datetime.datetime.strptime(start_date, "%Y-%m-%d")
+            query = query.filter(CertificateDownload.downloaded_at >= sd)
+        if end_date:
+            ed = datetime.datetime.strptime(end_date, "%Y-%m-%d") + datetime.timedelta(days=1)
+            query = query.filter(CertificateDownload.downloaded_at < ed)
+    except Exception:
+        pass
+
+    rows = query.order_by(CertificateDownload.downloaded_at.desc()).all()
+
+    # Build CSV
+    import csv
+    si = StringIO()
+    writer = csv.writer(si)
+    writer.writerow(["id", "student_hallticket", "certificate_type", "transaction_id", "proof_filename", "downloaded_at"])
+    for r in rows:
+        writer.writerow([r.id, r.student_hallticket, r.certificate_type, r.transaction_id or "", r.proof_filename or "", r.downloaded_at.strftime("%Y-%m-%d %H:%M:%S")])
+
+    output = make_response(si.getvalue())
+    output.headers["Content-Disposition"] = f"attachment; filename=logs_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+    output.headers["Content-Type"] = "text/csv"
+    return output
 
 
 def _check_admin_auth():

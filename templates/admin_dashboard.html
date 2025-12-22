@@ -430,15 +430,26 @@
                         <button type="submit" class="bulk-download-btn">Download Selected</button>
                     </form>
                 </div>
-                <form method="POST" action="{{ url_for('admin_search') }}" style="margin-bottom:25px;">
-                    <input type="text" name="search_hallticket" placeholder="Search Hall Ticket Number"
-                        value="{{ search_query if search_query else '' }}" required
-                        style="padding:8px; border-radius:4px; border:1px solid #aaa;">
-                    <button type="submit"
-                        style="padding:8px 15px; background:#6d0d86; color:rgb(255, 255, 255); border:none; border-radius:4px; cursor:pointer;">Search🔍</button>
-                    {% if is_search %}
-                    <a href="{{ url_for('admin_dashboard') }}" style="margin-left:10px; color:#000204;">Clear</a>
-                    {% endif %}
+                <form method="GET" action="{{ url_for('admin_dashboard') }}" style="margin-bottom:25px; display: flex; gap:8px; align-items: center;">
+                    <input type="text" name="hallticket" placeholder="Hall Ticket" value="{{ filters.hallticket if filters else '' }}" style="padding:8px; border-radius:4px; border:1px solid #aaa;">
+                    <select name="cert_type" style="padding:8px; border-radius:4px; border:1px solid #aaa;">
+                        <option value="">All Types</option>
+                        <option value="all" {% if filters and filters.cert_type=='all' %}selected{% endif %}>All (explicit)</option>
+                        <option value="Bonafide" {% if filters and filters.cert_type=='Bonafide' %}selected{% endif %}>Bonafide</option>
+                        <option value="Bonafide (scholarship purpose)" {% if filters and filters.cert_type=="Bonafide (scholarship purpose)" %}selected{% endif %}>Bonafide (scholarship)</option>
+                        <option value="Course Completion" {% if filters and filters.cert_type=='Course Completion' %}selected{% endif %}>Course Completion</option>
+                        <option value="Custodium" {% if filters and filters.cert_type=='Custodium' %}selected{% endif %}>Custodium</option>
+                        <option value="Fee details for IT purpose" {% if filters and filters.cert_type=='Fee details for IT purpose' %}selected{% endif %}>Fee Details (IT)</option>
+                        <option value="Fee structure for bank loan" {% if filters and filters.cert_type=='Fee structure for bank loan' %}selected{% endif %}>Fee Structure (Loan)</option>
+                    </select>
+                    <input type="text" name="transaction_id" placeholder="Transaction ID" value="{{ filters.transaction_id if filters else '' }}" style="padding:8px; border-radius:4px; border:1px solid #aaa;">
+                    <label style="font-size:0.9em; color:#333;">From</label>
+                    <input type="date" name="start_date" value="{{ filters.start_date if filters else '' }}" style="padding:8px; border-radius:4px; border:1px solid #aaa;">
+                    <label style="font-size:0.9em; color:#333;">To</label>
+                    <input type="date" name="end_date" value="{{ filters.end_date if filters else '' }}" style="padding:8px; border-radius:4px; border:1px solid #aaa;">
+                    <button type="submit" style="padding:8px 15px; background:#6d0d86; color:#fff; border:none; border-radius:4px; cursor:pointer;">Filter</button>
+                    <a href="{{ url_for('admin_dashboard') }}" style="margin-left:6px; color:#000204;">Clear</a>
+                    <a href="{{ url_for('export_logs', hallticket=(filters.hallticket if filters else ''), cert_type=(filters.cert_type if filters else ''), transaction_id=(filters.transaction_id if filters else ''), start_date=(filters.start_date if filters else ''), end_date=(filters.end_date if filters else '')) }}" class="export-btn" style="text-decoration:none; margin-left:8px;">⬇️ Export CSV</a>
                 </form>
 
                 <!-- Clear logs -->
@@ -452,6 +463,7 @@
             </div>
 
             {% if logs %}
+            <div style="margin-bottom:10px; color:#333;">Total logs: {{ pagination.total if pagination else (logs|length) }}</div>
             <table>
                 <thead>
                     <tr>
@@ -485,6 +497,17 @@
                     {% endfor %}
                 </tbody>
             </table>
+            {% if pagination and pagination.pages > 1 %}
+            <div style="margin-top:12px; display:flex; gap:8px; align-items:center;">
+                {% if pagination.has_prev %}
+                <a href="{{ url_for('admin_dashboard', hallticket=(filters.hallticket if filters else ''), cert_type=(filters.cert_type if filters else ''), transaction_id=(filters.transaction_id if filters else ''), start_date=(filters.start_date if filters else ''), end_date=(filters.end_date if filters else ''), page=pagination.prev_num) }}" style="padding:6px 10px; background:#0e315f; color:#fff; border-radius:6px; text-decoration:none;">◀ Prev</a>
+                {% endif %}
+                <span>Page {{ pagination.page }} of {{ pagination.pages }}</span>
+                {% if pagination.has_next %}
+                <a href="{{ url_for('admin_dashboard', hallticket=(filters.hallticket if filters else ''), cert_type=(filters.cert_type if filters else ''), transaction_id=(filters.transaction_id if filters else ''), start_date=(filters.start_date if filters else ''), end_date=(filters.end_date if filters else ''), page=pagination.next_num) }}" style="padding:6px 10px; background:#0e315f; color:#fff; border-radius:6px; text-decoration:none;">Next ▶</a>
+                {% endif %}
+            </div>
+            {% endif %}
             {% else %}
             <div class="no-logs-msg">
                 No certificates or payments logged yet.
