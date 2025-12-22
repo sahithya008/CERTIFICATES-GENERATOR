@@ -144,6 +144,66 @@ def admin_dashboard():
     logs = CertificateDownload.query.order_by(CertificateDownload.downloaded_at.desc()).all()
     return render_template("admin_dashboard.html", logs=logs)
 
+@app.route("/admin/api/analytics")
+def get_analytics():
+    """API endpoint to fetch dashboard analytics data."""
+    if not session.get("admin"):
+        return jsonify({"error": "unauthorized"}), 401
+    
+    # Total downloads
+    total_downloads = CertificateDownload.query.count()
+    
+    # Downloads by certificate type
+    cert_type_counts = db.session.query(
+        CertificateDownload.certificate_type,
+        db.func.count(CertificateDownload.id).label("count")
+    ).group_by(CertificateDownload.certificate_type).all()
+    
+    cert_type_data = {cert_type: count for cert_type, count in cert_type_counts}
+    
+    # Unique students
+    unique_students = db.session.query(
+        db.func.count(db.func.distinct(CertificateDownload.student_hallticket))
+    ).scalar() or 0
+    
+    # Downloads per day (last 30 days)
+    from sqlalchemy import func
+    daily_downloads = db.session.query(
+        func.date(CertificateDownload.downloaded_at).label("date"),
+        func.count(CertificateDownload.id).label("count")
+    ).filter(
+        CertificateDownload.downloaded_at >= datetime.datetime.utcnow() - datetime.timedelta(days=30)
+    ).group_by(func.date(CertificateDownload.downloaded_at)).order_by("date").all()
+    
+    daily_data = {str(date): count for date, count in daily_downloads}
+    
+    # Peak hour (most downloads)
+    peak_hour_data = db.session.query(
+        func.strftime('%H', CertificateDownload.downloaded_at).label("hour"),
+        func.count(CertificateDownload.id).label("count")
+    ).group_by(func.strftime('%H', CertificateDownload.downloaded_at)).order_by(func.count(CertificateDownload.id).desc()).first()
+    
+    peak_hour = peak_hour_data[0] + ":00" if peak_hour_data else "N/A"
+    
+    # Top 5 students by certificate count
+    top_students = db.session.query(
+        CertificateDownload.student_hallticket,
+        db.func.count(CertificateDownload.id).label("count")
+    ).group_by(CertificateDownload.student_hallticket).order_by(
+        db.func.count(CertificateDownload.id).desc()
+    ).limit(5).all()
+    
+    top_students_data = {student: count for student, count in top_students}
+    
+    return jsonify({
+        "total_downloads": total_downloads,
+        "unique_students": unique_students,
+        "cert_type_data": cert_type_data,
+        "daily_data": daily_data,
+        "peak_hour": peak_hour,
+        "top_students": top_students_data
+    })
+
 @app.route("/logout")
 def logout():
     session.clear()
