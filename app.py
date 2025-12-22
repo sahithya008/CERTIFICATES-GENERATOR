@@ -4,13 +4,14 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.lib.units import cm
-from io import BytesIO
+from io import BytesIO, StringIO
 import datetime
 import os
 import pandas as pd
 import html
 import zipfile
 from flask_sqlalchemy import SQLAlchemy
+from analytics_service import create_analytics_service
 
 app = Flask(__name__)
 app.secret_key = "yoursecretkey"
@@ -72,6 +73,9 @@ with app.app_context():
         db.drop_all()
         db.create_all()
         print("Database migration completed successfully!")
+
+# Initialize analytics service
+analytics_service = create_analytics_service(db, CertificateDownload)
 
 def is_cert_eligible(cert_type: str, status: str, purpose: str) -> bool:
     if status is None:
@@ -143,6 +147,101 @@ def admin_dashboard():
         return redirect(url_for("admin_login"))
     logs = CertificateDownload.query.order_by(CertificateDownload.downloaded_at.desc()).all()
     return render_template("admin_dashboard.html", logs=logs)
+
+@app.route("/admin/api/analytics")
+def get_analytics():
+    """API endpoint to fetch dashboard analytics data."""
+    if not session.get("admin"):
+        return jsonify({"error": "unauthorized"}), 401
+    
+    try:
+        # Use analytics service for data aggregation
+        total_downloads = analytics_service.get_total_downloads()
+        unique_students = analytics_service.get_unique_students()
+        cert_type_data = analytics_service.get_certificate_type_distribution()
+        daily_data = analytics_service.get_daily_downloads(days=30)
+        peak_hour = analytics_service.get_peak_hour()
+        top_students_data = analytics_service.get_top_students(limit=5)
+        
+        return jsonify({
+            "total_downloads": total_downloads,
+            "unique_students": unique_students,
+            "cert_type_data": cert_type_data,
+            "daily_data": daily_data,
+            "peak_hour": peak_hour,
+            "top_students": top_students_data
+        })
+    except Exception as e:
+        print(f"Error in get_analytics: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/admin/api/analytics/advanced")
+def get_advanced_analytics():
+    """Advanced analytics endpoint with extended metrics."""
+    if not session.get("admin"):
+        return jsonify({"error": "unauthorized"}), 401
+    
+    try:
+        hourly_dist = analytics_service.get_hourly_distribution()
+        monthly_data = analytics_service.get_monthly_comparison(months=6)
+        success_rate = analytics_service.get_certificate_success_rate()
+        
+        return jsonify({
+            "hourly_distribution": hourly_dist,
+            "monthly_comparison": monthly_data,
+            "success_metrics": success_rate
+        })
+    except Exception as e:
+        print(f"Error in get_advanced_analytics: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/admin/api/analytics/date-range", methods=["POST"])
+def get_analytics_by_range():
+    """Get analytics for a specific date range."""
+    if not session.get("admin"):
+        return jsonify({"error": "unauthorized"}), 401
+    
+    try:
+        data = request.get_json()
+        start_date = data.get("start_date")
+        end_date = data.get("end_date")
+        
+        if not start_date or not end_date:
+            return jsonify({"error": "Missing start_date or end_date"}), 400
+        
+        analytics = analytics_service.get_analytics_by_date_range(start_date, end_date)
+        return jsonify(analytics)
+    except Exception as e:
+        print(f"Error in get_analytics_by_range: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/admin/api/analytics/export/csv")
+def export_analytics_csv():
+    """Export analytics data as CSV."""
+    if not session.get("admin"):
+        return jsonify({"error": "unauthorized"}), 401
+    
+    try:
+        csv_data = analytics_service.export_data_csv()
+        
+        # Create file-like object
+        output = StringIO()
+        output.write(csv_data)
+        output.seek(0)
+        
+        return send_file(
+            BytesIO(csv_data.encode()),
+            mimetype="text/csv",
+            as_attachment=True,
+            download_name=f"analytics_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        )
+    except Exception as e:
+        print(f"Error in export_analytics_csv: {e}")
+        return jsonify({"error": str(e)}), 500
+
 
 @app.route("/logout")
 def logout():
