@@ -86,13 +86,13 @@
                 </thead>
                 <tbody>
                     {% for log in logs %}
-                    <tr>
+                    <tr class="{% if log['is_new'] %}highlight-new{% endif %}">
                         <td>{{ loop.index }}</td>
-                        <td>{{ log.hallticket }}</td>
-                        <td>{{ log.certificate }}</td>
-                        <td>{{ log.transaction_id or '-' }}</td>
-                        <td>{{ log.proof_filename or '-' }}</td>
-                        <td>{{ log.date }} {{ log.time }}</td>
+                        <td>{{ log['hallticket'] }}</td>
+                        <td>{{ log['certificate_type'] }}</td>
+                        <td>{{ log['transaction_id'] or '-' }}</td>
+                        <td>{{ log['proof_filename'] or '-' }}</td>
+                        <td>{{ log['downloaded_at'] }}</td>
                     </tr>
                     {% endfor %}
                 </tbody>

@@ -17,9 +17,45 @@ import pytz
 
 IST = pytz.timezone("Asia/Kolkata")
 
+def clean_val(val):
+    if pd.isna(val):
+        return ""
+    return str(val).replace("\n", " ").replace("\r", " ").strip()
+
 def ist_now():
     return datetime.now(IST)
 
+CSV_FILE = "student_audit_log.csv"
+
+def write_audit_log(entry):
+    """
+    entry: dict with keys:
+    ['Date','Time','Hall Ticket','Student Name',
+    'Certificate','Transaction ID','Status','Reference']
+    """
+    os.makedirs(os.path.dirname(CSV_FILE) or ".", exist_ok=True)
+    write_header = not os.path.isfile(CSV_FILE) or os.path.getsize(CSV_FILE) == 0
+
+    with open(CSV_FILE, "a", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(
+            f,
+            fieldnames=[
+                'Date','Time','Hall Ticket','Student Name',
+                'Certificate','Transaction ID','Status','Reference'],
+            quoting=csv.QUOTE_ALL
+        )
+        if write_header:
+            writer.writeheader()
+        clean_entry = {k: clean_val(entry.get(k, "")) for k in writer.fieldnames}
+
+       
+        now = datetime.now()
+        if not clean_entry['Date']:
+            clean_entry['Date'] = now.strftime("%Y-%m-%d")
+        if not clean_entry['Time']:
+            clean_entry['Time'] = now.strftime("%H:%M:%S")
+
+        writer.writerow(clean_entry)
 
 app = Flask(__name__)
 app.secret_key = "yoursecretkey"
@@ -48,32 +84,29 @@ def save_student_record(student, hallticket, cert_type, purpose, transaction_id)
     file_exists = os.path.isfile(STUDENT_RECORDS_FILE)
 
     with open(STUDENT_RECORDS_FILE, "a", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=[
-            "timestamp",
-            "hallticket",
-            "name",
-            "branch",
-            "year",
-            "status",
-            "certificate_type",
-            "purpose",
-            "transaction_id"
-        ])
+        writer = csv.DictWriter(
+            f,
+            fieldnames=[
+                "timestamp",
+                "hallticket",
+                "name",
+                "status",
+                "certificate_type",
+                "transaction_id"
 
+            ])
         if not file_exists:
             writer.writeheader()
 
         writer.writerow({
-            "timestamp": datetime.utcnow().isoformat(),
-            "hallticket": hallticket,
-            "name": student["NAME"].values[0],
-            "branch": student["BRANCH"].values[0],
-            "year": student["YEAR"].values[0],
+            "timestamp": ist_now().strftime("%d-%m-%Y %H:%M:%S"),
+            "hallticket": clean_val(hallticket),
+            "name":student["NAME"].values[0],
             "status": student["STATUS"].values[0],
-            "certificate_type": cert_type,
-            "purpose": purpose,
-            "transaction_id": transaction_id
+            "certificate_type": clean_val(cert_type),
+            "transaction_id": clean_val(transaction_id)
         })
+
 
 # Excel setup
 EXCEL_FILE = "student_certificates.xlsx"
@@ -112,19 +145,13 @@ def append_audit_log(event_type, data):
         "log_id",
         "date",
         "time",
-        "event_type",
         "hallticket",
         "name",
-        "year",
-        "branch",
         "certificate",
-        "purpose",
         "transaction_id",
+        "purpose",
         "status",
-        "actor",
         "reference",
-        "ip",
-        "proof_filename"
     ]
     
     file_exists = os.path.isfile(AUDIT_LOG_FILE)
@@ -142,18 +169,13 @@ def append_audit_log(event_type, data):
         row = {key: "" for key in fieldnames}
 
         row.update({
-            "hallticket": data.get("hallticket") or data.get("hall_ticket", ""),
+            "hallticket": data.get("hallticketno") or data.get("hall_ticket", ""),
             "name": data.get("name", ""),
-            "year": data.get("year", ""),
-            "branch": data.get("branch", ""),
             "certificate": data.get("certificate") or data.get("certificate_type", ""),
-            "purpose": data.get("purpose", ""),
             "transaction_id": data.get("transaction_id", ""),
-            "status": data.get("status", ""),
-            "actor": data.get("actor", ""),
+            "purpose": data.get("purpose", ""),
+            "status": data.get("status"),
             "reference": data.get("reference", ""),
-            "ip": data.get("ip", ""),
-            "proof_filename": data.get("proof_filename", "")
         })
 
         row["log_id"] = str(uuid.uuid4())
@@ -178,21 +200,9 @@ def export_certificates_csv():
         download_name="certificate_report.csv",
         mimetype="text/csv"
     )
-
-
-
-
     
 # Database model
 IST_OFFSET = timedelta(hours=5, minutes=30)
-class CertificateAudit(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    hallticket = db.Column(db.String(20))
-    certificate_type = db.Column(db.String(100))
-    transaction_id = db.Column(db.String(100))
-    proof_filename = db.Column(db.String(200))
-    created_at = db.Column(db.DateTime, default=lambda: datetime.utcnow() + IST_OFFSET)
-
 
 class CertificateDownload(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -201,6 +211,17 @@ class CertificateDownload(db.Model):
     transaction_id = db.Column(db.String(100), nullable=True)
     proof_filename = db.Column(db.String(200), nullable=True)
     downloaded_at = db.Column(db.DateTime, default=ist_now)
+
+class CertificateAudit(db.Model):
+    __tablename__ = "certificate_audit"
+
+    id = db.Column(db.Integer, primary_key=True)
+    hallticket = db.Column(db.String(50), nullable=False)
+    certificate_type = db.Column(db.String(100), nullable=False)
+    transaction_id = db.Column(db.String(100), nullable=True)
+    proof_filename = db.Column(db.String(200), nullable=True)
+    created_at = db.Column(db.DateTime, default=ist_now)
+
 
 # Database initialization
 with app.app_context():
@@ -365,10 +386,9 @@ def download_all():
                 "certificate_type": cert_type,
                 "purpose": "ADMIN BULK DOWNLOAD",
                 "transaction_id": "ADMIN",
-                "status": status,
-                "actor": "ADMIN",
-                "reference": "BULK_ZIP",
-                "ip": request.remote_addr
+                "purpose": "ADMIN BULK DOWNLOAD",
+                "status": "ADMIN",
+                "reference": "BULK_ZIP"
             })
 
             # Log in database
@@ -421,18 +441,25 @@ def admin_search():
 
 @app.route("/admin/dashboard")
 def admin_dashboard():
-    logs = []
-    audit_path = "logs/certificate_audit_log.csv"
+    if not session.get("admin"):
+        return redirect(url_for("admin_login"))
 
-    if os.path.exists(audit_path):
-        with open(audit_path, newline="", encoding="utf-8") as f:
-            reader = csv.DictReader(f)
-            logs = list(reader)
+    logs = CertificateDownload.query.order_by(CertificateDownload.downloaded_at.desc()).all()
 
     return render_template(
         "admin_dashboard.html",
-        logs=logs
+        logs=logs,
     )
+
+
+
+@app.route("/admin/update_tem", methods=["POST"])
+def update_tem():
+    flash(
+        "⚠️ This action is not configured. If you have a form using url_for('update_tem'), update it to point to an existing admin endpoint.",
+        "warning",
+    )
+    return redirect(url_for("admin_dashboard"))
 
 
 
@@ -474,17 +501,6 @@ def payment_page():
         flash("❌ None of the selected certificates are eligible for this student.", "danger")
         return redirect(url_for("home"))
 
-    append_audit_log("REQUEST", {
-        "hall_ticket": hallticketno,
-        "name": student["NAME"].values[0],
-        "certificate_type": ", ".join(eligible_certs),
-        "purpose": purpose,
-        "status": status,
-        "actor": "STUDENT",
-        "reference": "REQUEST_SUBMITTED",
-        "ip": request.remote_addr
-    })
-
     session["cert_types"] = eligible_certs
     session["hallticketno"] = hallticketno
     session["purpose"] = purpose
@@ -516,17 +532,7 @@ def verify_payment():
     proof_file.save(os.path.join(app.config["UPLOAD_FOLDER"], filename))
 
     student = students.loc[students["HALLTICKET"] == hallticketno]
-    append_audit_log("PAYMENT_VERIFIED", {
-        "hall_ticket": hallticketno,
-        "name": student["NAME"].values[0],
-        "certificate_type": ", ".join(cert_types),
-        "purpose": purpose,
-        "transaction_id": transaction_id,
-        "status": student["STATUS"].values[0],
-        "actor": "STUDENT",
-        "reference": "PAYMENT_SUCCESS",
-        "ip": request.remote_addr
-    })
+    student = students.loc[students["HALLTICKET"] == hallticketno]
 
     # Generate certificates
     generated = []
@@ -559,12 +565,10 @@ def verify_payment():
             "hall_ticket": hallticketno,
             "name": student["NAME"].values[0],
             "certificate_type": cert_type,
-            "purpose": purpose,
             "transaction_id": transaction_id,
+            "purpose": purpose,
             "status": student["STATUS"].values[0],
-            "actor": "SYSTEM",
-            "reference": f"{cert_type}_{hallticketno}.pdf",
-            "ip": request.remote_addr
+            "reference": f"{cert_type}_{hallticketno}.pdf"
         })
 
     db.session.commit()
