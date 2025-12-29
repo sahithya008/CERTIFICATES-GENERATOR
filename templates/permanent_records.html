@@ -3,85 +3,202 @@
 
 <head>
     <meta charset="UTF-8">
-    <title>Permanent Certificate Records</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Permanent Records - Never Cleared</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         body {
-            background: #f4f6f9;
+            background-color: #f5f6fa;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        .container {
+            margin-top: 40px;
         }
 
         h2 {
-            margin: 30px 0;
             text-align: center;
+            margin-bottom: 10px;
+            color: #2c3e50;
         }
 
-        table {
-            background: #fff;
-        }
-
-        th {
-            background: #0d6efd;
-            color: white;
+        .subtitle {
             text-align: center;
-        }
-
-        td {
-            text-align: center;
+            color: #7f8c8d;
+            margin-bottom: 30px;
             font-size: 14px;
+        }
+
+        .badge-permanent {
+            background-color: #27ae60;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: bold;
+            display: inline-block;
+            margin-bottom: 20px;
+        }
+
+        .info-box {
+            background-color: #e8f5e9;
+            border-left: 4px solid #4caf50;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+        }
+
+        .info-box strong {
+            color: #2e7d32;
+        }
+
+        .table thead {
+            background-color: #27ae60;
+            color: white;
+            font-size: 14px;
+            text-align: center;
+        }
+
+        .table tbody td {
+            font-size: 13px;
+            text-align: center;
+            vertical-align: middle;
+        }
+
+        .table tbody tr:nth-child(even) {
+            background-color: #f8f9fa;
+        }
+
+        .table tbody tr:hover {
+            background-color: #e8f5e9;
+        }
+
+        .btn-custom {
+            background-color: #27ae60;
+            color: white;
+            font-weight: bold;
+            border-radius: 6px;
+            padding: 8px 16px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn-custom:hover {
+            background-color: #229954;
+            transform: scale(1.05);
+            color: white;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+        }
+
+        .btn-export {
+            background-color: #3498db;
+        }
+
+        .btn-export:hover {
+            background-color: #2980b9;
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+
+        .record-count {
+            text-align: center;
+            margin-bottom: 15px;
+            font-size: 16px;
+            color: #34495e;
+        }
+
+        .record-count strong {
+            color: #27ae60;
+            font-size: 20px;
         }
     </style>
 </head>
 
 <body>
     <div class="container">
-        <h2>Permanent Certificate Records (CSV – Append Only)</h2>
+        <div class="text-center">
+            <span class="badge-permanent">🔒 PERMANENT DATABASE</span>
+        </div>
 
-        <div class="mb-3 text-end">
-            <a href="{{ url_for('export_certificates_csv') }}" class="btn btn-success">
-                Download CSV
+        <h2>Permanent Certificate Records</h2>
+        <p class="subtitle">These records are never deleted and serve as permanent audit trail</p>
+
+        <div class="info-box">
+            <strong>ℹ️ About Permanent Records:</strong><br>
+            This database contains all certificate downloads from the beginning. Even when you clear temporary logs from
+            the dashboard, these permanent records remain intact forever for audit and compliance purposes.
+        </div>
+
+        <div class="record-count">
+            Total Permanent Records: <strong>{{ logs|length }}</strong>
+        </div>
+
+        <div class="action-buttons">
+            <a href="{{ url_for('export_permanent_db') }}" class="btn-custom btn-export">
+                📥 Export as CSV
             </a>
-            <a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary">
-                Back
+            <a href="{{ url_for('admin_dashboard') }}" class="btn-custom">
+                ← Back to Dashboard
             </a>
         </div>
 
-        {% if logs %}
         <div class="table-responsive">
-            <table class="table table-bordered table-hover table-sm">
+            <table class="table table-bordered table-hover">
                 <thead>
                     <tr>
                         <th>#</th>
-                        <th>Date</th>
-                        <th>Time</th>
                         <th>Hall Ticket</th>
-                        <th>Student Name</th>
-                        <th>Certificate</th>
+                        <th>Certificate Type</th>
                         <th>Transaction ID</th>
-                        <th>Status</th>
-                        <th>Reference</th>
+                        <th>Proof Filename</th>
+                        <th>Created At (IST)</th>
                     </tr>
                 </thead>
                 <tbody>
+                    {% if logs %}
                     {% for log in logs %}
                     <tr>
                         <td>{{ loop.index }}</td>
-                        <td>{{ log.date }}</td>
-                        <td>{{ log.time }}</td>
-                        <td>{{ log.hallticket }}</td>
-                        <td>{{ log.name }}</td>
-                        <td>{{ log.certificate }}</td>
-                        <td>{{ log.transaction_id or '-' }}</td>
-                        <td>{{ log.status }}</td>
-                        <td>{{ log.reference }}</td>
+                        <td><strong>{{ log.hallticket }}</strong></td>
+                        <td>{{ log.certificate_type }}</td>
+                        <td>{{ log.transaction_id }}</td>
+                        <td>
+                            {% if log.proof_filename and log.proof_filename != '-' %}
+                            <a href="{{ url_for('static', filename='uploads/' + log.proof_filename) }}" target="_blank">
+                                {{ log.proof_filename }}
+                            </a>
+                            {% else %}
+                            -
+                            {% endif %}
+                        </td>
+                        <td>{{ log.created_at }}</td>
                     </tr>
                     {% endfor %}
+                    {% else %}
+                    <tr>
+                        <td colspan="6" class="text-center text-muted">
+                            No permanent records found yet.
+                        </td>
+                    </tr>
+                    {% endif %}
                 </tbody>
             </table>
         </div>
-        {% else %}
-        <p class="text-center text-muted">No permanent records found.</p>
-        {% endif %}
+
+        <div class="text-center mt-4">
+            <small class="text-muted">
+                Last updated: {{ logs[0].created_at if logs else 'N/A' }}
+            </small>
+        </div>
     </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 
 </html>
