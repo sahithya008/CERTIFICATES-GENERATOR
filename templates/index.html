@@ -150,7 +150,7 @@
             </div>
         </form>
 
-        <div class="footer">© 2025 SRITW | Certificate Portal</div>
+        <div class="footer">© SRITW | Certificate Portal</div>
     </div>
 
     <script>
@@ -158,46 +158,95 @@
 
             const form = document.getElementById("certForm");
             const hallticketInput = document.getElementById("hallticketno");
-            const custodiumCheckbox = document.querySelector('input[value="Custodium"]');
-            const purposeDiv = document.getElementById("purposeDiv");
+            const certCheckboxes = document.querySelectorAll('input[name="cert_types"]');
             const purposeInput = document.getElementById("purpose");
-            const courseCompletionCheckbox = document.querySelector('input[value="Course Completion"]');
 
-            custodiumCheckbox.addEventListener("change", () => {
-                purposeDiv.style.display = custodiumCheckbox.checked ? "block" : "none";
-                purposeInput.required = custodiumCheckbox.checked;
-            });
-
-            hallticketInput.addEventListener("input", () => {
-                if (hallticketInput.value.startsWith("X")) {
-                    courseCompletionCheckbox.checked = false;
-                    courseCompletionCheckbox.disabled = true;
-                } else {
-                    courseCompletionCheckbox.disabled = false;
-                }
-            });
+            console.log("JS loaded"); // 🔍 debug
 
             form.addEventListener("submit", async function (e) {
                 e.preventDefault();
+                console.log("Form submit intercepted"); // 🔍 debug
 
                 const hallticket = hallticketInput.value.trim().toUpperCase();
-                if (!hallticket) return;
-
-                const res = await fetch("/check_status/" + hallticket);
-                const data = await res.json();
-
-                if (data.status === "invalid") {
-                    alert("❌ Invalid Hall Ticket Number!");
-                    hallticketInput.value = "";
-                    hallticketInput.focus();
+                if (!hallticket) {
+                    alert("⚠️ Please enter your Hall Ticket Number!");
                     return;
                 }
 
-                form.submit(); // ✅ submit only if valid
+                // Get selected certificates
+                const selectedCerts = Array.from(certCheckboxes)
+                    .filter(cb => cb.checked)
+                    .map(cb => cb.value);
+
+                if (selectedCerts.length === 0) {
+                    alert("⚠️ Please select at least one certificate!");
+                    return;
+                }
+
+                // Get purpose if Custodium is selected
+                const purpose = purposeInput ? purposeInput.value.trim() : "";
+                if (selectedCerts.includes("Custodium") && !purpose) {
+                    alert("⚠️ Purpose is required for Custodium certificate!");
+                    return;
+                }
+
+                try {
+                    const res = await fetch("/check_status/" + hallticket);
+                    const data = await res.json();
+
+                    console.log("Backend response:", data); // 🔍 debug
+
+                    if (data.status === "invalid") {
+                        alert("❌ Invalid Hall Ticket Number!");
+                        hallticketInput.value = "";
+                        hallticketInput.focus();
+                        return;
+                    }
+
+                    // Now check eligibility based on status and selected certificates
+                    const status = data.status; // "STUDYING", "COMPLETED", "PASSOUT", etc.
+
+                    // Define eligibility rules
+                    const eligibilityMap = {
+                        "STUDYING": [
+                            "Bonafide",
+                            "Bonafide (scholarship purpose)",
+                            "Fee details for IT purpose",
+                            "Fee structure for bank loan",
+                            "Custodium"
+                        ],
+                        "COMPLETED": ["Bonafide", "Course Completion"],
+                        "PASSOUT": ["Bonafide", "Course Completion"]
+                    };
+
+                    // Check if any selected certificate is eligible
+                    const eligibleCerts = eligibilityMap[status] || ["Bonafide"];
+                    const invalidCerts = selectedCerts.filter(cert => !eligibleCerts.includes(cert));
+
+                    if (invalidCerts.length > 0) {
+                        alert(
+                            "⚠️ Certificate Eligibility Issue\n\n" +
+                            "The following certificates are not available for your current status (" + status + "):\n\n" +
+                            "❌ " + invalidCerts.join("\n❌ ") + "\n\n" +
+                            "✅ You can apply for:\n" +
+                            eligibleCerts.join("\n")
+                        );
+                        return;
+                    }
+
+                    // ✅ All selected certificates are eligible → submit
+                    console.log("All certificates eligible, submitting form");
+                    form.submit();
+
+                } catch (err) {
+                    console.error(err);
+                    alert("⚠️ Server error. Please try again.");
+                }
             });
 
         });
     </script>
+
 
 </body>
 

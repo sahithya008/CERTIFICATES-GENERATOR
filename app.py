@@ -420,10 +420,12 @@ def view_db():
 def check_status(hallticket):
     hallticket = str(hallticket).strip().upper()
     student = students.loc[students["HALLTICKET"] == hallticket]
+
     if student.empty:
-        return jsonify({"status": "invalid"})
+        return jsonify({"status": "INVALID"})
+
     status = str(student["STATUS"].values[0]).strip().upper()
-    return jsonify(status=status)
+    return jsonify({"status": status})
 
 @app.route("/admin", methods=["GET", "POST"])
 def admin_login():
