@@ -421,18 +421,25 @@ def admin_search():
 
 @app.route("/admin/dashboard")
 def admin_dashboard():
-    logs = []
-    audit_path = "logs/certificate_audit_log.csv"
+    if not session.get("admin"):
+        return redirect(url_for("admin_login"))
 
-    if os.path.exists(audit_path):
-        with open(audit_path, newline="", encoding="utf-8") as f:
-            reader = csv.DictReader(f)
-            logs = list(reader)
+    logs = CertificateDownload.query.order_by(CertificateDownload.downloaded_at.desc()).all()
 
     return render_template(
         "admin_dashboard.html",
-        logs=logs
+        logs=logs,
     )
+
+
+
+@app.route("/admin/update_tem", methods=["POST"])
+def update_tem():
+    flash(
+        "⚠️ This action is not configured. If you have a form using url_for('update_tem'), update it to point to an existing admin endpoint.",
+        "warning",
+    )
+    return redirect(url_for("admin_dashboard"))
 
 
 
