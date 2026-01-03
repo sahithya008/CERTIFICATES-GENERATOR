@@ -17,9 +17,45 @@ import pytz
 
 IST = pytz.timezone("Asia/Kolkata")
 
+def clean_val(val):
+    if pd.isna(val):
+        return ""
+    return str(val).replace("\n", " ").replace("\r", " ").strip()
+
 def ist_now():
     return datetime.now(IST)
 
+CSV_FILE = "student_audit_log.csv"
+
+def write_audit_log(entry):
+    """
+    entry: dict with keys:
+    ['Date','Time','Hall Ticket','Student Name',
+    'Certificate','Transaction ID','Status','Reference']
+    """
+    os.makedirs(os.path.dirname(CSV_FILE) or ".", exist_ok=True)
+    write_header = not os.path.isfile(CSV_FILE) or os.path.getsize(CSV_FILE) == 0
+
+    with open(CSV_FILE, "a", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(
+            f,
+            fieldnames=[
+                'Date','Time','Hall Ticket','Student Name',
+                'Certificate','Transaction ID','Status','Reference'],
+            quoting=csv.QUOTE_ALL
+        )
+        if write_header:
+            writer.writeheader()
+        clean_entry = {k: clean_val(entry.get(k, "")) for k in writer.fieldnames}
+
+       
+        now = datetime.now()
+        if not clean_entry['Date']:
+            clean_entry['Date'] = now.strftime("%Y-%m-%d")
+        if not clean_entry['Time']:
+            clean_entry['Time'] = now.strftime("%H:%M:%S")
+
+        writer.writerow(clean_entry)
 
 app = Flask(__name__)
 app.secret_key = "yoursecretkey"
@@ -48,32 +84,29 @@ def save_student_record(student, hallticket, cert_type, purpose, transaction_id)
     file_exists = os.path.isfile(STUDENT_RECORDS_FILE)
 
     with open(STUDENT_RECORDS_FILE, "a", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=[
-            "timestamp",
-            "hallticket",
-            "name",
-            "branch",
-            "year",
-            "status",
-            "certificate_type",
-            "purpose",
-            "transaction_id"
-        ])
+        writer = csv.DictWriter(
+            f,
+            fieldnames=[
+                "timestamp",
+                "hallticket",
+                "name",
+                "status",
+                "certificate_type",
+                "transaction_id"
 
+            ])
         if not file_exists:
             writer.writeheader()
 
         writer.writerow({
-            "timestamp": datetime.utcnow().isoformat(),
-            "hallticket": hallticket,
-            "name": student["NAME"].values[0],
-            "branch": student["BRANCH"].values[0],
-            "year": student["YEAR"].values[0],
+            "timestamp": ist_now().strftime("%d-%m-%Y %H:%M:%S"),
+            "hallticket": clean_val(hallticket),
+            "name":student["NAME"].values[0],
             "status": student["STATUS"].values[0],
-            "certificate_type": cert_type,
-            "purpose": purpose,
-            "transaction_id": transaction_id
+            "certificate_type": clean_val(cert_type),
+            "transaction_id": clean_val(transaction_id)
         })
+
 
 # Excel setup
 EXCEL_FILE = "student_certificates.xlsx"
@@ -112,19 +145,13 @@ def append_audit_log(event_type, data):
         "log_id",
         "date",
         "time",
-        "event_type",
         "hallticket",
         "name",
-        "year",
-        "branch",
         "certificate",
-        "purpose",
         "transaction_id",
+        "purpose",
         "status",
-        "actor",
         "reference",
-        "ip",
-        "proof_filename"
     ]
     
     file_exists = os.path.isfile(AUDIT_LOG_FILE)
@@ -142,18 +169,13 @@ def append_audit_log(event_type, data):
         row = {key: "" for key in fieldnames}
 
         row.update({
-            "hallticket": data.get("hallticket") or data.get("hall_ticket", ""),
+            "hallticket": data.get("hallticketno") or data.get("hall_ticket", ""),
             "name": data.get("name", ""),
-            "year": data.get("year", ""),
-            "branch": data.get("branch", ""),
             "certificate": data.get("certificate") or data.get("certificate_type", ""),
-            "purpose": data.get("purpose", ""),
             "transaction_id": data.get("transaction_id", ""),
-            "status": data.get("status", ""),
-            "actor": data.get("actor", ""),
+            "purpose": data.get("purpose", ""),
+            "status": data.get("status"),
             "reference": data.get("reference", ""),
-            "ip": data.get("ip", ""),
-            "proof_filename": data.get("proof_filename", "")
         })
 
         row["log_id"] = str(uuid.uuid4())
@@ -163,36 +185,154 @@ def append_audit_log(event_type, data):
         writer.writerow(row)
 
 
+# Temporary and Permanent CSV files
+TEMP_CSV = "temp_editable.csv"
+PERMANENT_CSV = "logs/permanent_edits.csv"
+
+def create_temp_csv():
+    """Create temporary CSV from current database data."""
+    logs = CertificateDownload.query.order_by(CertificateDownload.downloaded_at.desc()).all()
+    
+    with open(TEMP_CSV, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=[
+            "id", "hallticket", "certificate_type", "transaction_id", "proof_filename", "downloaded_at"
+        ])
+        writer.writeheader()
+        for log in logs:
+            ist_time = log.downloaded_at.astimezone(IST) if log.downloaded_at else ""
+            writer.writerow({
+                "id": log.id,
+                "hallticket": log.student_hallticket,
+                "certificate_type": log.certificate_type,
+                "transaction_id": log.transaction_id or "",
+                "proof_filename": log.proof_filename or "",
+                "downloaded_at": ist_time.strftime("%Y-%m-%d %H:%M:%S") if ist_time else ""
+            })
+
+def append_permanent_edit(edit_data):
+    """Append an edit to the permanent CSV with timestamp."""
+    os.makedirs(os.path.dirname(PERMANENT_CSV), exist_ok=True)
+    file_exists = os.path.isfile(PERMANENT_CSV)
+    
+    with open(PERMANENT_CSV, "a", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=[
+            "timestamp", "hallticket", "field_changed", "old_value", "new_value", "edited_by"
+        ])
+        if not file_exists:
+            writer.writeheader()
+        
+        writer.writerow({
+            "timestamp": ist_now().strftime("%Y-%m-%d %H:%M:%S"),
+            "hallticket": edit_data.get("hallticket", ""),
+            "field_changed": edit_data.get("field_changed", ""),
+            "old_value": edit_data.get("old_value", ""),
+            "new_value": edit_data.get("new_value", ""),
+            "edited_by": edit_data.get("edited_by", "admin")
+        })
+
+def get_permanent_edits():
+    """Get all permanent edits."""
+    if not os.path.exists(PERMANENT_CSV):
+        return []
+    
+    edits = []
+    with open(PERMANENT_CSV, "r", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            edits.append(row)
+    return edits
+
+
 @app.route("/admin/export_certificates_csv")
 def export_certificates_csv():
-    audit_path = "logs/certificate_audit_log.csv"
-
-    # If audit file doesn't exist yet
-    if not os.path.exists(audit_path):
-        flash("No audit data available", "warning")
+    # Download the permanent edits CSV
+    if not os.path.exists(PERMANENT_CSV):
+        flash("No permanent edit data available", "warning")
         return redirect(url_for("admin_dashboard"))
 
     return send_file(
-        audit_path,
+        PERMANENT_CSV,
         as_attachment=True,
-        download_name="certificate_report.csv",
+        download_name="permanent_edits.csv",
         mimetype="text/csv"
     )
 
+@app.route("/admin/download_database")
+def download_database():
+    # Create and download the temporary CSV
+    create_temp_csv()
+    if not os.path.exists(TEMP_CSV):
+        flash("No data available for download", "warning")
+        return redirect(url_for("admin_dashboard"))
 
+    return send_file(
+        TEMP_CSV,
+        as_attachment=True,
+        download_name="editable_database.csv",
+        mimetype="text/csv"
+    )
 
+@app.route("/admin/edit_data")
+def edit_data():
+    if not session.get("admin"):
+        return redirect(url_for("admin_login"))
 
+    logs = CertificateDownload.query.order_by(CertificateDownload.downloaded_at.desc()).all()
+    return render_template("edit_data.html", logs=logs)
+
+@app.route("/admin/save_edits", methods=["POST"])
+def save_edits():
+    if not session.get("admin"):
+        return redirect(url_for("admin_login"))
+
+    # Get form data
+    ids = request.form.getlist("id")
+    halltickets = request.form.getlist("hallticket")
+    certificate_types = request.form.getlist("certificate_type")
+    transaction_ids = request.form.getlist("transaction_id")
+    proof_filenames = request.form.getlist("proof_filename")
+
+    edits_count = 0
+    for i, log_id in enumerate(ids):
+        log = CertificateDownload.query.get(int(log_id))
+        if log:
+            original = {
+                "hallticket": log.student_hallticket,
+                "certificate_type": log.certificate_type,
+                "transaction_id": log.transaction_id or "",
+                "proof_filename": log.proof_filename or ""
+            }
+            new_values = {
+                "hallticket": halltickets[i].strip(),
+                "certificate_type": certificate_types[i].strip(),
+                "transaction_id": transaction_ids[i].strip(),
+                "proof_filename": proof_filenames[i].strip()
+            }
+
+            # Update database
+            log.student_hallticket = new_values["hallticket"]
+            log.certificate_type = new_values["certificate_type"]
+            log.transaction_id = new_values["transaction_id"] or None
+            log.proof_filename = new_values["proof_filename"] or None
+
+            # Log changes
+            for field in ["hallticket", "certificate_type", "transaction_id", "proof_filename"]:
+                if original[field] != new_values[field]:
+                    append_permanent_edit({
+                        "hallticket": new_values["hallticket"],
+                        "field_changed": field,
+                        "old_value": original[field],
+                        "new_value": new_values[field],
+                        "edited_by": "admin"
+                    })
+                    edits_count += 1
+
+    db.session.commit()
+    flash(f"Edits saved: {edits_count} changes logged.", "success")
+    return redirect(url_for("edit_data"))
     
 # Database model
 IST_OFFSET = timedelta(hours=5, minutes=30)
-class CertificateAudit(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    hallticket = db.Column(db.String(20))
-    certificate_type = db.Column(db.String(100))
-    transaction_id = db.Column(db.String(100))
-    proof_filename = db.Column(db.String(200))
-    created_at = db.Column(db.DateTime, default=lambda: datetime.utcnow() + IST_OFFSET)
-
 
 class CertificateDownload(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -201,6 +341,17 @@ class CertificateDownload(db.Model):
     transaction_id = db.Column(db.String(100), nullable=True)
     proof_filename = db.Column(db.String(200), nullable=True)
     downloaded_at = db.Column(db.DateTime, default=ist_now)
+
+class CertificateAudit(db.Model):
+    __tablename__ = "certificate_audit"
+
+    id = db.Column(db.Integer, primary_key=True)
+    hallticket = db.Column(db.String(50), nullable=False)
+    certificate_type = db.Column(db.String(100), nullable=False)
+    transaction_id = db.Column(db.String(100), nullable=True)
+    proof_filename = db.Column(db.String(200), nullable=True)
+    created_at = db.Column(db.DateTime, default=ist_now)
+
 
 # Database initialization
 with app.app_context():
@@ -231,6 +382,7 @@ def home():
 
 @app.route("/admin/view_db")
 def view_db():
+    """View Temporary Database - Same data as dashboard"""
     if not session.get("admin"):
         return redirect(url_for("admin_login"))
 
@@ -239,14 +391,18 @@ def view_db():
     now_ist = datetime.now(timezone.utc).astimezone(ist)
     yesterday_ist = now_ist - timedelta(days=1)
 
-    # Fetch logs from DB
+    # Fetch logs from TEMPORARY DB (CertificateDownload)
     logs = CertificateDownload.query.order_by(CertificateDownload.downloaded_at.desc()).all()
 
     # Convert timestamps and mark new entries
     formatted_logs = []
     for log in logs:
-        downloaded_ist = log.downloaded_at.astimezone(ist)
-        is_new = downloaded_ist >= yesterday_ist
+        if log.downloaded_at:
+            downloaded_ist = log.downloaded_at.astimezone(ist)
+            is_new = downloaded_ist >= yesterday_ist
+        else:
+            downloaded_ist = None
+            is_new = False
 
         formatted_logs.append({
             "id": log.id,
@@ -254,7 +410,7 @@ def view_db():
             "certificate_type": log.certificate_type,
             "transaction_id": log.transaction_id or "",
             "proof_filename": log.proof_filename or "",
-            "downloaded_at": downloaded_ist.strftime("%Y-%m-%d %H:%M:%S"),
+            "downloaded_at": downloaded_ist.strftime("%Y-%m-%d %H:%M:%S") if downloaded_ist else "",
             "is_new": is_new
         })
 
@@ -264,10 +420,12 @@ def view_db():
 def check_status(hallticket):
     hallticket = str(hallticket).strip().upper()
     student = students.loc[students["HALLTICKET"] == hallticket]
+
     if student.empty:
-        return jsonify({"status": "invalid"})
+        return jsonify({"status": "INVALID"})
+
     status = str(student["STATUS"].values[0]).strip().upper()
-    return jsonify(status=status)
+    return jsonify({"status": status})
 
 @app.route("/admin", methods=["GET", "POST"])
 def admin_login():
@@ -304,6 +462,7 @@ def view_audit():
 
 @app.route("/admin/download_audit_log")
 def download_audit_log():
+    """Download the CSV audit log file (separate from database)"""
     if not session.get("admin"):
         return redirect(url_for("admin_login"))
 
@@ -319,6 +478,7 @@ def download_audit_log():
         download_name="certificate_audit_log.csv",
         mimetype="text/csv"
     )
+
 
 
 @app.route("/admin/download_all", methods=["POST"])
@@ -365,10 +525,9 @@ def download_all():
                 "certificate_type": cert_type,
                 "purpose": "ADMIN BULK DOWNLOAD",
                 "transaction_id": "ADMIN",
-                "status": status,
-                "actor": "ADMIN",
-                "reference": "BULK_ZIP",
-                "ip": request.remote_addr
+                "purpose": "ADMIN BULK DOWNLOAD",
+                "status": "ADMIN",
+                "reference": "BULK_ZIP"
             })
 
             # Log in database
@@ -391,6 +550,16 @@ def download_all():
 
     db.session.commit()
 
+    # Log additions to permanent edits
+    for hallticketno, cert_type in generated_files:
+        append_permanent_edit({
+            "hallticket": hallticketno,
+            "field_changed": "certificate_added",
+            "old_value": "",
+            "new_value": cert_type,
+            "edited_by": "system"
+        })
+
     # Create ZIP
     zip_buffer = BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -401,22 +570,93 @@ def download_all():
     zip_buffer.seek(0)
     return send_file(zip_buffer, as_attachment=True, download_name="bulk_certificates.zip", mimetype="application/zip")
 
+@app.route("/admin/export_permanent_db")
+def export_permanent_db():
+    """Export the permanent database (CertificateAudit) as CSV"""
+    if not session.get("admin"):
+        return redirect(url_for("admin_login"))
 
+    # Create CSV in memory
+    output = StringIO()
+    writer = csv.writer(output)
+    
+    # Write headers
+    writer.writerow(['ID', 'Hall Ticket', 'Certificate Type', 'Transaction ID', 'Proof Filename', 'Created At (IST)'])
+    
+    # Fetch from permanent database
+    ist = timezone(timedelta(hours=5, minutes=30))
+    audits = CertificateAudit.query.order_by(CertificateAudit.created_at.desc()).all()
+    
+    for audit in audits:
+        created_ist = audit.created_at.astimezone(ist) if audit.created_at else None
+        writer.writerow([
+            audit.id,
+            audit.hallticket,
+            audit.certificate_type,
+            audit.transaction_id or "",
+            audit.proof_filename or "",
+            created_ist.strftime("%Y-%m-%d %H:%M:%S") if created_ist else ""
+        ])
+    
+    output.seek(0)
+    
+    # Convert to BytesIO for send_file
+    byte_output = BytesIO()
+    byte_output.write(output.getvalue().encode('utf-8'))
+    byte_output.seek(0)
+    
+    return send_file(
+        byte_output,
+        as_attachment=True,
+        download_name="permanent_certificate_records.csv",
+        mimetype="text/csv"
+    )
 
 @app.route("/admin/search", methods=["POST"])
 def admin_search():
-    query = request.form.get("search_hallticket")
+    if not session.get("admin"):
+        return redirect(url_for("admin_login"))
 
+    query = request.form.get("search_hallticket", "").strip()
+
+    # Define IST timezone
+    ist = timezone(timedelta(hours=5, minutes=30))
+    now_ist = datetime.now(timezone.utc).astimezone(ist)
+    yesterday_ist = now_ist - timedelta(days=1)
+
+    # Search in TEMPORARY database (CertificateDownload)
     logs = CertificateDownload.query.filter(
         CertificateDownload.student_hallticket.contains(query)
     ).order_by(CertificateDownload.downloaded_at.desc()).all()
 
+    # Convert timestamps and mark new entries
+    formatted_logs = []
+    for log in logs:
+        if log.downloaded_at:
+            downloaded_ist = log.downloaded_at.astimezone(ist)
+            is_new = downloaded_ist >= yesterday_ist
+        else:
+            downloaded_ist = None
+            is_new = False
+
+        formatted_logs.append({
+            "id": log.id,
+            "hallticket": log.student_hallticket,
+            "certificate_type": log.certificate_type,
+            "transaction_id": log.transaction_id or "",
+            "proof_filename": log.proof_filename or "",
+            "downloaded_at": downloaded_ist.strftime("%Y-%m-%d %H:%M:%S") if downloaded_ist else "",
+            "is_new": is_new
+        })
+
     return render_template(
         "admin_dashboard.html",
-        logs=logs,
+        logs=formatted_logs,
         is_search=True,
         search_query=query
     )
+
+
 
 
 @app.route("/admin/dashboard")
@@ -424,11 +664,47 @@ def admin_dashboard():
     if not session.get("admin"):
         return redirect(url_for("admin_login"))
 
+<<<<<<< HEAD
     logs = CertificateDownload.query.order_by(CertificateDownload.downloaded_at.desc()).all()
 
     return render_template(
         "admin_dashboard.html",
         logs=logs,
+=======
+    # Define IST timezone
+    ist = timezone(timedelta(hours=5, minutes=30))
+    now_ist = datetime.now(timezone.utc).astimezone(ist)
+    yesterday_ist = now_ist - timedelta(days=1)
+
+    # Fetch logs from TEMPORARY database (CertificateDownload)
+    logs = CertificateDownload.query.order_by(CertificateDownload.downloaded_at.desc()).all()
+
+    # Convert timestamps and mark new entries
+    formatted_logs = []
+    for log in logs:
+        if log.downloaded_at:
+            downloaded_ist = log.downloaded_at.astimezone(ist)
+            is_new = downloaded_ist >= yesterday_ist
+        else:
+            downloaded_ist = None
+            is_new = False
+
+        formatted_logs.append({
+            "id": log.id,
+            "hallticket": log.student_hallticket,
+            "certificate_type": log.certificate_type,
+            "transaction_id": log.transaction_id or "",
+            "proof_filename": log.proof_filename or "",
+            "downloaded_at": downloaded_ist.strftime("%Y-%m-%d %H:%M:%S") if downloaded_ist else "",
+            "is_new": is_new
+        })
+
+    return render_template(
+        "admin_dashboard.html",
+        logs=formatted_logs,
+        is_search=False,
+        search_query=""
+>>>>>>> bf067410a254f5208349d8461ed86ab2cd23c387
     )
 
 
@@ -481,17 +757,6 @@ def payment_page():
         flash("❌ None of the selected certificates are eligible for this student.", "danger")
         return redirect(url_for("home"))
 
-    append_audit_log("REQUEST", {
-        "hall_ticket": hallticketno,
-        "name": student["NAME"].values[0],
-        "certificate_type": ", ".join(eligible_certs),
-        "purpose": purpose,
-        "status": status,
-        "actor": "STUDENT",
-        "reference": "REQUEST_SUBMITTED",
-        "ip": request.remote_addr
-    })
-
     session["cert_types"] = eligible_certs
     session["hallticketno"] = hallticketno
     session["purpose"] = purpose
@@ -523,17 +788,7 @@ def verify_payment():
     proof_file.save(os.path.join(app.config["UPLOAD_FOLDER"], filename))
 
     student = students.loc[students["HALLTICKET"] == hallticketno]
-    append_audit_log("PAYMENT_VERIFIED", {
-        "hall_ticket": hallticketno,
-        "name": student["NAME"].values[0],
-        "certificate_type": ", ".join(cert_types),
-        "purpose": purpose,
-        "transaction_id": transaction_id,
-        "status": student["STATUS"].values[0],
-        "actor": "STUDENT",
-        "reference": "PAYMENT_SUCCESS",
-        "ip": request.remote_addr
-    })
+    student = students.loc[students["HALLTICKET"] == hallticketno]
 
     # Generate certificates
     generated = []
@@ -566,15 +821,23 @@ def verify_payment():
             "hall_ticket": hallticketno,
             "name": student["NAME"].values[0],
             "certificate_type": cert_type,
-            "purpose": purpose,
             "transaction_id": transaction_id,
+            "purpose": purpose,
             "status": student["STATUS"].values[0],
-            "actor": "SYSTEM",
-            "reference": f"{cert_type}_{hallticketno}.pdf",
-            "ip": request.remote_addr
+            "reference": f"{cert_type}_{hallticketno}.pdf"
         })
 
     db.session.commit()
+
+    # Log additions to permanent edits
+    for cert_type, _ in generated:
+        append_permanent_edit({
+            "hallticket": hallticketno,
+            "field_changed": "certificate_added",
+            "old_value": "",
+            "new_value": cert_type,
+            "edited_by": "system"
+        })
 
     # Clear session
     session.pop("cert_types", None)
@@ -597,18 +860,38 @@ def verify_payment():
 
 @app.route("/admin/permanent-records")
 def permanent_records():
-    logs = []
-    audit_path = "logs/certificate_audit_log.csv"
+    """View Permanent Database - NEVER gets cleared"""
+    if not session.get("admin"):
+        return redirect(url_for("admin_login"))
 
-    if os.path.exists(audit_path):
-        with open(audit_path, newline="", encoding="utf-8") as f:
-            reader = csv.DictReader(f)
-            logs = list(reader)
+    # Define IST timezone
+    ist = timezone(timedelta(hours=5, minutes=30))
 
-    return render_template("permanent_records.html", logs=logs)
+    # Fetch from PERMANENT database (CertificateAudit)
+    audits = CertificateAudit.query.order_by(CertificateAudit.created_at.desc()).all()
+
+    # Convert timestamps
+    audit_list = []
+    for audit in audits:
+        if audit.created_at:
+            created_ist = audit.created_at.astimezone(ist)
+        else:
+            created_ist = None
+
+        audit_list.append({
+            "id": audit.id,
+            "hallticket": audit.hallticket,
+            "certificate_type": audit.certificate_type,
+            "transaction_id": audit.transaction_id or "-",
+            "proof_filename": audit.proof_filename or "-",
+            "created_at": created_ist.strftime("%Y-%m-%d %H:%M:%S") if created_ist else ""
+        })
+
+    return render_template("permanent_records.html", logs=audit_list)
 
 @app.route("/admin/clear_logs_by_date", methods=["POST"])
 def clear_logs_by_date():
+    """Clear ONLY temporary logs - Permanent database stays untouched"""
     if not session.get("admin"):
         return redirect(url_for("admin_login"))
 
@@ -616,16 +899,89 @@ def clear_logs_by_date():
 
     if cutoff_date_str:
         try:
-            cutoff = datetime.strptime(cutoff_date_str, "%Y-%m-%d")
+            # Parse the cutoff date and make it timezone-aware (IST)
+            cutoff_naive = datetime.strptime(cutoff_date_str, "%Y-%m-%d")
+            ist = timezone(timedelta(hours=5, minutes=30))
+            cutoff = cutoff_naive.replace(tzinfo=ist)
+            
+            # Delete records from TEMPORARY database only
             deleted = CertificateDownload.query.filter(
                 CertificateDownload.downloaded_at < cutoff
             ).delete()
+            
             db.session.commit()
-            flash(f"✅ {deleted} logs cleared successfully!", "success")
+            
+            # Log this action to permanent edits CSV
+            append_permanent_edit({
+                "hallticket": "SYSTEM",
+                "field_changed": "bulk_delete",
+                "old_value": f"{deleted} records",
+                "new_value": f"Deleted before {cutoff_date_str}",
+                "edited_by": "admin"
+            })
+            
+            flash(f"✅ {deleted} temporary logs cleared successfully! Permanent records are safe.", "success")
         except Exception as e:
+            db.session.rollback()
             print("Error clearing logs:", e)
-            flash("❌ Error clearing logs.", "danger")
+            flash(f"❌ Error clearing logs: {str(e)}", "danger")
+    else:
+        flash("❌ Please provide a cutoff date.", "warning")
 
+    return redirect(url_for("admin_dashboard"))
+
+
+@app.route("/admin/upload_edited_csv", methods=["POST"])
+def upload_edited_csv():
+    if not session.get("admin"):
+        return redirect(url_for("admin_login"))
+
+    file = request.files.get("edited_csv")
+    if not file or file.filename == "":
+        flash("No file uploaded", "warning")
+        return redirect(url_for("admin_dashboard"))
+
+    # Read uploaded CSV
+    uploaded_data = []
+    try:
+        content = file.read().decode("utf-8")
+        reader = csv.DictReader(StringIO(content))
+        for row in reader:
+            uploaded_data.append(row)
+    except Exception as e:
+        flash(f"Error reading CSV: {str(e)}", "danger")
+        return redirect(url_for("admin_dashboard"))
+
+    # Get current DB data
+    logs = CertificateDownload.query.all()
+    db_data = {log.id: {
+        "hallticket": log.student_hallticket,
+        "certificate_type": log.certificate_type,
+        "transaction_id": log.transaction_id or "",
+        "proof_filename": log.proof_filename or "",
+        "downloaded_at": log.downloaded_at.astimezone(IST).strftime("%Y-%m-%d %H:%M:%S") if log.downloaded_at else ""
+    } for log in logs}
+
+    # Compare and log edits
+    edits_count = 0
+    for row in uploaded_data:
+        row_id = int(row.get("id", 0))
+        if row_id in db_data:
+            original = db_data[row_id]
+            for field in ["hallticket", "certificate_type", "transaction_id", "proof_filename"]:
+                new_value = row.get(field, "").strip()
+                old_value = original.get(field, "").strip()
+                if new_value != old_value:
+                    append_permanent_edit({
+                        "hallticket": row.get("hallticket", ""),
+                        "field_changed": field,
+                        "old_value": old_value,
+                        "new_value": new_value,
+                        "edited_by": "admin"
+                    })
+                    edits_count += 1
+
+    flash(f"Edits processed: {edits_count} changes logged to permanent records.", "success")
     return redirect(url_for("admin_dashboard"))
 
 

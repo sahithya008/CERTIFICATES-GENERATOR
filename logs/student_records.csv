@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 timestamp,hallticket,name,branch,year,status,certificate_type,purpose,transaction_id
 2025-12-16T17:00:02.929958,246Y1A6655,KASULA SAHITHI,CSM,II year,STUDYING,Bonafide,,';lkjhgfdsa
 2025-12-17T09:18:59.092031,236Y1A6655,MANIMADDE KREETHIKA,CSM,III year,STUDYING,Bonafide,passport,asdfghjkl
@@ -42,3 +43,5 @@ timestamp,hallticket,name,branch,year,status,certificate_type,purpose,transactio
 2025-12-18T09:40:24.170117,246Y1A6655,KASULA SAHITHI,CSM,II year,STUDYING,Fee structure for bank loan,,asdfghjkl
 2025-12-18T09:41:53.342532,246Y1A6655,KASULA SAHITHI,CSM,II year,STUDYING,Fee structure for bank loan,,asdfghjkl
 2025-12-25T13:59:44.696252,246Y1A6655,KASULA SAHITHI,CSM,II year,STUDYING,"Bonafide, Custodium, Bonafide (scholarship purpose), Fee details for IT purpose, Fee structure for bank loan",passport,6962030626677
+=======
+>>>>>>> bf067410a254f5208349d8461ed86ab2cd23c387

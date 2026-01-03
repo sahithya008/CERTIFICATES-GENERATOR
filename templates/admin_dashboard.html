@@ -165,9 +165,38 @@
             background-color: #6d27aa;
             transform: scale(1.05);
         }
-    </style>
 
+        .highlight-new {
+            background-color: #fff3cd !important;
+        }
 
+        .flash-messages {
+            margin: 20px 0;
+        }
+
+        .alert {
+            padding: 12px 20px;
+            border-radius: 6px;
+            margin-bottom: 10px;
+        }
+
+        .alert-success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .alert-danger {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .alert-warning {
+            background-color: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
     </style>
 </head>
 
@@ -175,22 +204,32 @@
     <header>
         Admin Dashboard
         <a href="{{ url_for('logout') }}"><button class="logout">Logout</button></a>
-
     </header>
 
     <div class="container">
-        <h2>Payment & Certificate Logs</h2>
+        <!-- Flash Messages -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        <div class="flash-messages">
+            {% for category, message in messages %}
+            <div class="alert alert-{{ category }}">
+                {{ message }}
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% endwith %}
+
+        <h2>Certificate Download Logs</h2>
+
         <div class="filter-section">
             <div class="bulk-download-block">
-
                 <div class="export-section">
-                    <h3>Certificate CSV Export</h3>
-                    <p>
-                        Download certificate usage data for external records.
-                    </p>
-                    <a href="{{ url_for('export_certificates_csv') }}" class="btn-link">
+                    <h3>Download Database</h3>
+                    <p>Download editable CSV file with current data.</p>
+                    <a href="{{ url_for('download_database') }}" class="btn-link">
                         <button class="bulk-download-btn" type="button">
-                            Download CSV
+                            Download Database
                         </button>
                     </a>
                 </div>
@@ -198,20 +237,30 @@
                 <hr class="section-divider">
 
                 <div class="export-section">
-                    <h3>Permanent DB Records</h3>
-                    <p>
-                        View permanent certificate history stored for audit purposes.
-                    </p>
-                    <a href="{{ url_for('view_db') }}" class="btn-link">
+                    <h3>Edit Data</h3>
+                    <p>Edit database records directly in the web interface.</p>
+                    <a href="{{ url_for('edit_data') }}" class="btn-link">
                         <button class="bulk-download-btn" type="button">
-                            View Database
+                            Edit Data
                         </button>
                     </a>
                 </div>
 
+                <hr class="section-divider">
+
+                <div class="export-section">
+                    <h3>🔒 Permanent Records</h3>
+                    <p>View permanent certificate history (never cleared).</p>
+                    <a href="{{ url_for('permanent_records') }}" class="btn-link">
+                        <button class="bulk-download-btn" type="button" style="background: #27ae60;">
+                            View Permanent DB
+                        </button>
+                    </a>
+                </div>
+
+                <hr class="section-divider">
+
             </div>
-
-
 
             <!-- Admin Bulk Download -->
             <div class="bulk-download-block">
@@ -231,16 +280,6 @@
                     <button type="submit" class="bulk-download-btn">Download Selected</button>
                 </form>
             </div>
-            <form method="POST" action="{{ url_for('admin_search') }}" style="margin-bottom:25px;">
-                <input type="text" name="search_hallticket" placeholder="Search Hall Ticket Number"
-                    value="{{ search_query if search_query else '' }}" required
-                    style="padding:8px; border-radius:4px; border:1px solid #aaa;">
-                <button type="submit"
-                    style="padding:8px 15px; background:#6d0d86; color:rgb(255, 255, 255); border:none; border-radius:4px; cursor:pointer;">Search🔍</button>
-                {% if is_search %}
-                <a href="{{ url_for('admin_dashboard') }}" style="margin-left:10px; color:#000204;">Clear</a>
-                {% endif %}
-            </form>
 
             <!-- Clear logs -->
             <div class="clear-logs-block">
@@ -252,6 +291,19 @@
             </div>
         </div>
 
+        <!-- Search Form -->
+        <form method="POST" action="{{ url_for('admin_search') }}" style="margin-bottom:25px;">
+            <input type="text" name="search_hallticket" placeholder="Search Hall Ticket Number"
+                value="{{ search_query if search_query else '' }}" required
+                style="padding:8px; border-radius:4px; border:1px solid #aaa;">
+            <button type="submit"
+                style="padding:8px 15px; background:#6d0d86; color:rgb(255, 255, 255); border:none; border-radius:4px; cursor:pointer;">Search🔍</button>
+            {% if is_search %}
+            <a href="{{ url_for('admin_dashboard') }}" style="margin-left:10px; color:#000204;">Clear</a>
+            {% endif %}
+        </form>
+
+        <!-- Certificate Download Logs Table -->
         {% if logs %}
         <table>
             <thead>
@@ -260,27 +312,27 @@
                     <th>Hall Ticket</th>
                     <th>Certificate Type</th>
                     <th>Transaction ID</th>
-                    <th>Payment Proof</th>
-                    <th>Generated At</th>
+                    <th>Proof Filename</th>
+                    <th>Downloaded At (IST)</th>
                 </tr>
             </thead>
             <tbody>
                 {% for log in logs %}
-                <tr>
+                <tr class="{% if log.is_new %}highlight-new{% endif %}">
                     <td class="centered">{{ loop.index }}</td>
-                    <td>{{ log.student_hallticket }}</td>
+                    <td>{{ log.hallticket }}</td>
                     <td>{{ log.certificate_type }}</td>
-                    <td>{{ log.transaction_id if log.transaction_id else '-' }}</td>
-                    <td class="centered">
+                    <td>{{ log.transaction_id or '-' }}</td>
+                    <td>
                         {% if log.proof_filename %}
                         <a href="{{ url_for('static', filename='uploads/' + log.proof_filename) }}" target="_blank">
-                            <img src="{{ url_for('static', filename='uploads/' + log.proof_filename) }}"
-                                class="proof-img" alt="Payment Proof">
+                            {{ log.proof_filename }}
                         </a>
                         {% else %}
                         -
                         {% endif %}
                     </td>
+<<<<<<< HEAD
                     <td>
                         {% if log.downloaded_at %}
                         {{ log.downloaded_at.strftime('%d-%m-%Y %I:%M %p') }}
@@ -289,13 +341,20 @@
                         {% endif %}
                     </td>
 
+=======
+                    <td>{{ log.downloaded_at }}</td>
+>>>>>>> bf067410a254f5208349d8461ed86ab2cd23c387
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
         {% else %}
         <div class="no-logs-msg">
-            No certificates or payments logged yet.
+            {% if is_search %}
+            No logs found for "{{ search_query }}".
+            {% else %}
+            No certificate downloads recorded yet.
+            {% endif %}
         </div>
         {% endif %}
     </div>
