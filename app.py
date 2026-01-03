@@ -15,6 +15,8 @@ import zipfile
 from flask_sqlalchemy import SQLAlchemy
 import pytz
 
+
+
 IST = pytz.timezone("Asia/Kolkata")
 
 def clean_val(val):
@@ -617,25 +619,30 @@ def admin_search():
 
     query = request.form.get("search_hallticket", "").strip()
 
-    # Define IST timezone
-    ist = timezone(timedelta(hours=5, minutes=30))
-    now_ist = datetime.now(timezone.utc).astimezone(ist)
+    # Use pytz IST timezone
+    now_ist = datetime.now(IST)
     yesterday_ist = now_ist - timedelta(days=1)
 
-    # Search in TEMPORARY database (CertificateDownload)
     logs = CertificateDownload.query.filter(
         CertificateDownload.student_hallticket.contains(query)
     ).order_by(CertificateDownload.downloaded_at.desc()).all()
 
-    # Convert timestamps and mark new entries
     formatted_logs = []
     for log in logs:
         if log.downloaded_at:
-            downloaded_ist = log.downloaded_at.astimezone(ist)
+            # Convert to IST timezone-aware datetime
+            if log.downloaded_at.tzinfo is None:
+                # If naive, assume it's already IST
+                downloaded_ist = IST.localize(log.downloaded_at)
+            else:
+                # If timezone-aware, convert to IST
+                downloaded_ist = log.downloaded_at.astimezone(IST)
+            
             is_new = downloaded_ist >= yesterday_ist
+            formatted_time = downloaded_ist.strftime('%d-%m-%Y %I:%M %p')
         else:
-            downloaded_ist = None
             is_new = False
+            formatted_time = "-"
 
         formatted_logs.append({
             "id": log.id,
@@ -643,7 +650,7 @@ def admin_search():
             "certificate_type": log.certificate_type,
             "transaction_id": log.transaction_id or "",
             "proof_filename": log.proof_filename or "",
-            "downloaded_at": downloaded_ist.strftime("%Y-%m-%d %H:%M:%S") if downloaded_ist else "",
+            "downloaded_at": formatted_time,
             "is_new": is_new
         })
 
@@ -656,29 +663,35 @@ def admin_search():
 
 
 
-
 @app.route("/admin/dashboard")
 def admin_dashboard():
     if not session.get("admin"):
         return redirect(url_for("admin_login"))
 
-    # Define IST timezone
-    ist = timezone(timedelta(hours=5, minutes=30))
-    now_ist = datetime.now(timezone.utc).astimezone(ist)
+    # Use pytz IST timezone
+    now_ist = datetime.now(IST)
     yesterday_ist = now_ist - timedelta(days=1)
 
-    # Fetch logs from TEMPORARY database (CertificateDownload)
-    logs = CertificateDownload.query.order_by(CertificateDownload.downloaded_at.desc()).all()
+    logs = CertificateDownload.query.order_by(
+        CertificateDownload.downloaded_at.desc()
+    ).all()
 
-    # Convert timestamps and mark new entries
     formatted_logs = []
     for log in logs:
         if log.downloaded_at:
-            downloaded_ist = log.downloaded_at.astimezone(ist)
+            # Convert to IST timezone-aware datetime
+            if log.downloaded_at.tzinfo is None:
+                # If naive, assume it's already IST
+                downloaded_ist = IST.localize(log.downloaded_at)
+            else:
+                # If timezone-aware, convert to IST
+                downloaded_ist = log.downloaded_at.astimezone(IST)
+            
             is_new = downloaded_ist >= yesterday_ist
+            formatted_time = downloaded_ist.strftime('%d-%m-%Y %I:%M %p')
         else:
-            downloaded_ist = None
             is_new = False
+            formatted_time = "-"
 
         formatted_logs.append({
             "id": log.id,
@@ -686,7 +699,7 @@ def admin_dashboard():
             "certificate_type": log.certificate_type,
             "transaction_id": log.transaction_id or "",
             "proof_filename": log.proof_filename or "",
-            "downloaded_at": downloaded_ist.strftime("%Y-%m-%d %H:%M:%S") if downloaded_ist else "",
+            "downloaded_at": formatted_time,
             "is_new": is_new
         })
 
@@ -758,9 +771,6 @@ def verify_payment():
     hallticketno = session.get("hallticketno")
     purpose = session.get("purpose", "")
     
-    if not hallticketno or not cert_types:
-        flash("❌ Session expired or no certificates selected.", "danger")
-        return redirect(url_for("home"))
 
     transaction_id = request.form.get("transaction_id", "").strip()
     proof_file = request.files.get("payment_proof")
@@ -1306,7 +1316,7 @@ def create_certificate(cert_type, student, hallticketno, purpose=""):
             "<b>" + html.escape(str(year)) + "</b> "
             "bearing <b>Hall Ticket No.</b> <b>" + html.escape(str(hallticketno)) + "</b> "
             "during the academic year <b>" + html.escape(str(academic_year)) + "</b>. "
-            "<br/><br/>DETAILS OF FEE PAID BY THIS STUDENT ARE GIVEN BELOW:" 
+            "<br/><br/>DETAILS OF FEE PAID BY THIS STUDENT ARE GIVEN BELOW(Estimated values):" 
         )
         flow.append(Paragraph(text, normal_style_custom))
         flow.append(Spacer(1, 12))
@@ -1401,7 +1411,7 @@ def create_certificate(cert_type, student, hallticketno, purpose=""):
             "<b>" + html.escape(str(branch)) + "</b> "
             "bearing Hall Ticket No. <b>" + html.escape(str(hallticketno)) + "</b> "
             "during the academic year    <b>" + html.escape(str(academic_year)) + "</b>. "
-            "<br/><br/>DETAILS OF FEE PARTICULARS PAYABLE BY THIS STUDENT ARE GIVEN BELOW:" 
+            "<br/><br/>DETAILS OF FEE PARTICULARS PAYABLE BY THIS STUDENT ARE GIVEN BELOW:"
         )
         flow.append(Paragraph(text, normal_style_custom))
         flow.append(Spacer(1, 12))
@@ -1428,8 +1438,9 @@ def create_certificate(cert_type, student, hallticketno, purpose=""):
             ("GRID", (0, 0), (-1, -1), 1, colors.black),
         ]))
         flow.append(table)
-        flow.append(Spacer(1,15))
-        flow.append(Paragraph("<b>Laptop Required</b>", styles["Justify"]))
+        flow.append(Spacer(1,10))
+        flow.append(Paragraph("<b>[ESTIMATED VALUES. CONTACT ADMIN OFFICE FOR MORE DETAILS]</b>", styles["Justify"]))
+        flow.append(Spacer(1, 8))
         flow.append(Paragraph(
             "<b>Our College Fees Bank Details:</b><br/>"
             "Account holder Name: Principal SRITW<br/>"
@@ -1445,7 +1456,7 @@ def create_certificate(cert_type, student, hallticketno, purpose=""):
         ))
 
 
-        flow.append(Spacer(1, 0.6 * cm))  # 2 cm gap below content
+        flow.append(Spacer(1, 0.3 * cm))  # 2 cm gap below content
         principal_style = ParagraphStyle(
             name="PrincipalStyle",
             fontName="Helvetica-Bold",
@@ -1464,10 +1475,10 @@ def create_certificate(cert_type, student, hallticketno, purpose=""):
             ('RIGHTPADDING', (0, 0), (-1, -1), 2 * cm),  # 3 cm gap from page edge
         ]))
         flow.append(principal_table)
-        flow.append(Spacer(1, 12))
-        
+        flow.append(PageBreak())
+
         flow.append(Paragraph("<b>TO WHOMSOEVER IT MAY CONCERN</b>", heading_style_custom))
-        flow.append(Spacer(1, 20))
+        flow.append(Spacer(1, 12))
         flow.append(Paragraph(text, styles["Justify"]))
         flow.append(Spacer(1, 12))
         table = Table(fee_data, colWidths=col_widths)
@@ -1480,8 +1491,9 @@ def create_certificate(cert_type, student, hallticketno, purpose=""):
             ("GRID", (0, 0), (-1, -1), 1, colors.black),
         ]))
         flow.append(table)
-        flow.append(Spacer(1,15))
-        flow.append(Paragraph("<b>Laptop Required</b>", styles["Justify"]))
+        flow.append(Spacer(1,10))
+        flow.append(Paragraph("<b>[ESTIMATED VALUES. CONTACT ADMIN OFFICE FOR MORE DETAILS]</b>", styles["Justify"]))
+        flow.append(Spacer(1, 8))
         flow.append(Paragraph(
             "<b>Our College Fees Bank Details:</b><br/>"
             "Account holder Name: Principal SRITW<br/>"
@@ -1495,7 +1507,7 @@ def create_certificate(cert_type, student, hallticketno, purpose=""):
             "Branch IFSC Code: UBIN0819123",
             styles["Justify"]
         ))
-        flow.append(Spacer(1,0.5))
+        flow.append(Spacer(1,0.3))
         principal_style = ParagraphStyle(
             name="PrincipalStyle",
             fontName="Helvetica-Bold",
@@ -1513,8 +1525,7 @@ def create_certificate(cert_type, student, hallticketno, purpose=""):
         principal_table.setStyle(TableStyle([
             ('RIGHTPADDING', (0, 0), (-1, -1), 2 * cm),  # 3 cm gap from page edge
         ]))
-        flow.append(principal_table)
-        
+        flow.append(principal_table)        
 
     else:
         flow.append(Paragraph("Invalid certificate type selected!", styles["Justify"]))

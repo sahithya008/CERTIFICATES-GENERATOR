@@ -108,6 +108,18 @@
             text-align: center;
             color: #5b5858;
         }
+
+        .error-message {
+            color: #d32f2f;
+            font-size: 13px;
+            margin-top: -12px;
+            margin-bottom: 15px;
+            display: none;
+        }
+
+        .error-message.show {
+            display: block;
+        }
     </style>
 </head>
 
@@ -120,6 +132,7 @@
 
             <label>Hall Ticket Number:</label>
             <input type="text" id="hallticketno" name="hallticketno" required>
+            <div class="error-message" id="hallticketError"></div>
 
             <label>Select Certificates:</label>
             <div class="checkbox-group">
@@ -137,6 +150,7 @@
                         (Loan)</label>
                 </div>
             </div>
+            <div class="error-message" id="certError"></div>
 
             <div id="purposeDiv" style="display:none;">
                 <label>Purpose (Custodium):</label>
@@ -150,7 +164,7 @@
             </div>
         </form>
 
-        <div class="footer">© 2025 SRITW | Certificate Portal</div>
+        <div class="footer">© SRITW | Certificate Portal</div>
     </div>
 
     <script>
@@ -158,46 +172,134 @@
 
             const form = document.getElementById("certForm");
             const hallticketInput = document.getElementById("hallticketno");
-            const custodiumCheckbox = document.querySelector('input[value="Custodium"]');
-            const purposeDiv = document.getElementById("purposeDiv");
+            const certCheckboxes = document.querySelectorAll('input[name="cert_types"]');
             const purposeInput = document.getElementById("purpose");
-            const courseCompletionCheckbox = document.querySelector('input[value="Course Completion"]');
+            const purposeDiv = document.getElementById("purposeDiv");
+            const hallticketError = document.getElementById("hallticketError");
+            const certError = document.getElementById("certError");
 
-            custodiumCheckbox.addEventListener("change", () => {
-                purposeDiv.style.display = custodiumCheckbox.checked ? "block" : "none";
-                purposeInput.required = custodiumCheckbox.checked;
+            console.log("JS loaded"); // 🔍 debug
+
+            // Show/hide purpose field based on Custodium selection
+            certCheckboxes.forEach(checkbox => {
+                checkbox.addEventListener("change", function () {
+                    const custodiumChecked = Array.from(certCheckboxes)
+                        .some(cb => cb.checked && cb.value === "Custodium");
+
+                    if (custodiumChecked) {
+                        purposeDiv.style.display = "block";
+                    } else {
+                        purposeDiv.style.display = "none";
+                        purposeInput.value = "";
+                    }
+                });
             });
 
-            hallticketInput.addEventListener("input", () => {
-                if (hallticketInput.value.startsWith("X")) {
-                    courseCompletionCheckbox.checked = false;
-                    courseCompletionCheckbox.disabled = true;
-                } else {
-                    courseCompletionCheckbox.disabled = false;
-                }
+            // Clear error messages on input
+            hallticketInput.addEventListener("input", function () {
+                hallticketError.classList.remove("show");
+                hallticketError.textContent = "";
+            });
+
+            certCheckboxes.forEach(checkbox => {
+                checkbox.addEventListener("change", function () {
+                    certError.classList.remove("show");
+                    certError.textContent = "";
+                });
             });
 
             form.addEventListener("submit", async function (e) {
                 e.preventDefault();
+                console.log("Form submit intercepted"); // 🔍 debug
+
+                // Clear previous errors
+                hallticketError.classList.remove("show");
+                hallticketError.textContent = "";
+                certError.classList.remove("show");
+                certError.textContent = "";
 
                 const hallticket = hallticketInput.value.trim().toUpperCase();
-                if (!hallticket) return;
-
-                const res = await fetch("/check_status/" + hallticket);
-                const data = await res.json();
-
-                if (data.status === "invalid") {
-                    alert("❌ Invalid Hall Ticket Number!");
-                    hallticketInput.value = "";
-                    hallticketInput.focus();
+                if (!hallticket) {
+                    hallticketError.textContent = "⚠️ Please enter your Hall Ticket Number!";
+                    hallticketError.classList.add("show");
                     return;
                 }
 
-                form.submit(); // ✅ submit only if valid
+                // Get selected certificates
+                const selectedCerts = Array.from(certCheckboxes)
+                    .filter(cb => cb.checked)
+                    .map(cb => cb.value);
+
+                if (selectedCerts.length === 0) {
+                    certError.textContent = "⚠️ Please select at least one certificate!";
+                    certError.classList.add("show");
+                    return;
+                }
+
+                // Get purpose if Custodium is selected
+                const purpose = purposeInput ? purposeInput.value.trim() : "";
+                if (selectedCerts.includes("Custodium") && !purpose) {
+                    certError.textContent = "⚠️ Purpose is required for Custodium certificate!";
+                    certError.classList.add("show");
+                    return;
+                }
+
+                try {
+                    const res = await fetch("/check_status/" + hallticket);
+                    const data = await res.json();
+
+                    console.log("Backend response:", data); // 🔍 debug
+
+                    if (data.status === "invalid") {
+                        hallticketError.textContent = "❌ Invalid Hall Ticket Number!";
+                        hallticketError.classList.add("show");
+                        hallticketInput.value = "";
+                        hallticketInput.focus();
+                        return;
+                    }
+
+                    // Now check eligibility based on status and selected certificates
+                    const status = data.status; // "STUDYING", "COMPLETED", "PASSOUT", etc.
+
+                    // Define eligibility rules
+                    const eligibilityMap = {
+                        "STUDYING": [
+                            "Bonafide",
+                            "Bonafide (scholarship purpose)",
+                            "Fee details for IT purpose",
+                            "Fee structure for bank loan",
+                            "Custodium"
+                        ],
+                        "COMPLETED": ["Bonafide", "Course Completion"],
+                        "PASSOUT": ["Bonafide", "Course Completion"]
+                    };
+
+                    // Check if any selected certificate is eligible
+                    const eligibleCerts = eligibilityMap[status] || ["Bonafide"];
+                    const invalidCerts = selectedCerts.filter(cert => !eligibleCerts.includes(cert));
+
+                    if (invalidCerts.length > 0) {
+                        certError.textContent =
+                            "❌ Not eligible for: " + invalidCerts.join(", ") +
+                            " (Status: " + status + ")";
+                        certError.classList.add("show");
+                        return;
+                    }
+
+                    // ✅ All selected certificates are eligible → submit
+                    console.log("All certificates eligible, submitting form");
+                    form.submit();
+
+                } catch (err) {
+                    console.error(err);
+                    hallticketError.textContent = "⚠️ Server error. Please try again.";
+                    hallticketError.classList.add("show");
+                }
             });
 
         });
     </script>
+
 
 </body>
 
