@@ -203,12 +203,12 @@ def create_temp_csv():
         for log in logs:
             ist_time = log.downloaded_at.astimezone(IST) if log.downloaded_at else ""
             writer.writerow({
-                "id": log.id,
-                "hallticket": log.student_hallticket,
-                "certificate_type": log.certificate_type,
-                "transaction_id": log.transaction_id or "",
-                "proof_filename": log.proof_filename or "",
-                "downloaded_at": ist_time.strftime("%Y-%m-%d %H:%M:%S") if ist_time else ""
+                "ID": log.id,
+                "HALLTICKET": log.student_hallticket,
+                "CERTIFICATE_TYPE": log.certificate_type,
+                "TRANSACTION_ID": log.transaction_id or "",
+                "PROOF_FILENAME": log.proof_filename or "",
+                "DOWNLOADED_AT": ist_time.strftime("%Y-%m-%d %H:%M:%S") if ist_time else ""
             })
 
 def append_permanent_edit(edit_data):
@@ -645,13 +645,13 @@ def admin_search():
             formatted_time = "-"
 
         formatted_logs.append({
-            "id": log.id,
-            "hallticket": log.student_hallticket,
-            "certificate_type": log.certificate_type,
-            "transaction_id": log.transaction_id or "",
-            "proof_filename": log.proof_filename or "",
-            "downloaded_at": formatted_time,
-            "is_new": is_new
+            "ID": log.id,
+            "HALLTICKET": log.student_hallticket,
+            "CERTIFICATE_TYPE": log.certificate_type,
+            "TRANSACTION_ID": log.transaction_id or "",
+            "PROOF_FILENAME": log.proof_filename or "",
+            "DOWNLOADED_AT": formatted_time,
+            "IS_NEW": is_new
         })
 
     return render_template(
