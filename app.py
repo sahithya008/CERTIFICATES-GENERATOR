@@ -206,12 +206,12 @@ def create_temp_csv():
         for log in logs:
             ist_time = log.downloaded_at.astimezone(IST) if log.downloaded_at else ""
             writer.writerow({
-                "ID": log.id,
-                "HALLTICKET": log.student_hallticket,
-                "CERTIFICATE_TYPE": log.certificate_type,
-                "TRANSACTION_ID": log.transaction_id or "",
-                "PROOF_FILENAME": log.proof_filename or "",
-                "DOWNLOADED_AT": ist_time.strftime("%Y-%m-%d %H:%M:%S") if ist_time else ""
+                "id": log.id,                                           # ✅ lowercase
+                "hallticket": log.student_hallticket,                   # ✅ lowercase
+                "certificate_type": log.certificate_type,               # ✅ lowercase
+                "transaction_id": log.transaction_id or "",             # ✅ lowercase
+                "proof_filename": log.proof_filename or "",             # ✅ lowercase
+                "downloaded_at": ist_time.strftime("%Y-%m-%d %H:%M:%S") if ist_time else ""  # ✅ lowercase
             })
 
 def append_permanent_edit(edit_data):
