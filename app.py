@@ -60,6 +60,9 @@ def write_audit_log(entry):
         writer.writerow(clean_entry)
 
 app = Flask(__name__)
+# Certificate caching setup
+CERT_CACHE_DIR = "generated_certificates"
+os.makedirs(CERT_CACHE_DIR, exist_ok=True)
 app.secret_key = "yoursecretkey"
 
 def utc_to_ist(utc_dt):
@@ -986,10 +989,6 @@ def upload_edited_csv():
 
 
 # ----------------- Certificate Creation ----------------- #
-# Add this at the top of your file with other imports
-CERT_CACHE_DIR = "generated_certificates"
-os.makedirs(CERT_CACHE_DIR, exist_ok=True)
-
 def create_certificate(cert_type, student, hallticketno, purpose=""):
     """
     Generate PDF for a student with caching.
