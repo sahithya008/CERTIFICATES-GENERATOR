@@ -986,11 +986,30 @@ def upload_edited_csv():
 
 
 # ----------------- Certificate Creation ----------------- #
+# Add this at the top of your file with other imports
+CERT_CACHE_DIR = "generated_certificates"
+os.makedirs(CERT_CACHE_DIR, exist_ok=True)
+
 def create_certificate(cert_type, student, hallticketno, purpose=""):
     """
-    Generate PDF for a student.
+    Generate PDF for a student with caching.
     Original PDF content preserved as in your code.
     """
+    
+    # ========== CACHING LOGIC (NEW) ==========
+    # Create unique filename based on cert type and hall ticket
+    safe_cert_type = cert_type.replace(" ", "_").replace("/", "_")
+    cache_filename = f"{hallticketno}_{safe_cert_type}.pdf"
+    cache_filepath = os.path.join(CERT_CACHE_DIR, cache_filename)
+    
+    # If already cached, return it immediately
+    if os.path.exists(cache_filepath):
+        cached_buffer = BytesIO()
+        with open(cache_filepath, "rb") as f:
+            cached_buffer.write(f.read())
+        cached_buffer.seek(0)
+        return cached_buffer
+    # ========== END CACHING LOGIC ==========
     def safe_get(col):
         return student[col].values[0] if col in student.columns else ""
 
@@ -1578,6 +1597,15 @@ def create_certificate(cert_type, student, hallticketno, purpose=""):
 
     doc.build(flow, onFirstPage=draw_first_page, onLaterPages=draw_later_pages)
     buffer.seek(0)
+    
+    # ========== SAVE TO CACHE (NEW) ==========
+    try:
+        with open(cache_filepath, "wb") as f:
+            f.write(buffer.getvalue())
+        buffer.seek(0)  # Reset buffer position after saving
+    except Exception as e:
+        print(f"Warning: Could not cache certificate: {e}")
+    # ========== END CACHE SAVE ==========
     return buffer
 
 # ----------------- Run App ----------------- #
