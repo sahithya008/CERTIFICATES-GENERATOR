@@ -13,7 +13,8 @@
             display: flex;
             justify-content: center;
             align-items: center;
-            height: 100vh;
+            min-height: 100vh;
+            padding: 20px 0;
         }
 
         .container {
@@ -40,6 +41,7 @@
             text-align: center;
             color: #1d9a92;
             margin-bottom: 25px;
+            font-size: 24px;
         }
 
         label {
@@ -47,29 +49,35 @@
             margin-top: 10px;
             display: block;
             color: #26949a;
+            margin-bottom: 8px;
         }
 
-        input,
-        button {
+        input[type="text"] {
             width: 100%;
             padding: 10px;
-            margin-top: 8px;
-            margin-bottom: 18px;
+            margin-bottom: 5px;
             border-radius: 6px;
             border: 1px solid #ccc;
             font-size: 14px;
+            box-sizing: border-box;
         }
 
-        input:focus {
+        input[type="text"]:focus {
             border-color: #7849a4;
             outline: none;
             box-shadow: 0 0 6px rgba(0, 102, 204, 0.3);
         }
 
         button {
+            width: 100%;
+            padding: 12px;
+            margin-top: 20px;
+            margin-bottom: 15px;
+            border-radius: 6px;
+            border: none;
+            font-size: 16px;
             background: #5a2285;
             color: white;
-            border: none;
             font-weight: bold;
             cursor: pointer;
         }
@@ -83,6 +91,7 @@
             grid-template-columns: repeat(2, 1fr);
             gap: 12px 20px;
             margin-top: 10px;
+            margin-bottom: 15px;
         }
 
         .checkbox-column {
@@ -96,40 +105,89 @@
             align-items: center;
             font-size: 14px;
             color: #000;
+            font-weight: normal;
+            margin: 0;
+            cursor: pointer;
         }
 
         .checkbox-column input[type="checkbox"] {
-            width: auto;
-            margin-right: 8px;
+            width: 18px;
+            height: 18px;
+            margin-right: 10px;
+            margin-top: 0;
+            margin-bottom: 0;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+
+        .purpose-field {
+            margin-top: 15px;
+            margin-bottom: 15px;
+            padding: 15px;
+            background: #f9f9f9;
+            border-left: 4px solid #26949a;
+            border-radius: 6px;
+        }
+
+        .purpose-field label {
+            color: #26949a;
+            font-size: 14px;
+            margin-bottom: 8px;
+        }
+
+        .purpose-field input {
+            margin-bottom: 0;
         }
 
         .admin-link-below {
             text-align: center;
-            margin-top: 10px;
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid #ddd;
         }
 
         .admin-link-below a {
             color: #5a2285;
             font-weight: bold;
             text-decoration: none;
+            font-size: 14px;
+        }
+
+        .admin-link-below a:hover {
+            color: #23dfcd;
+            text-decoration: underline;
         }
 
         .footer {
             font-size: 12px;
             text-align: center;
             color: #5b5858;
+            margin-top: 15px;
+            padding-top: 10px;
         }
 
         .error-message {
             color: #d32f2f;
             font-size: 13px;
-            margin-top: -12px;
+            margin-top: 5px;
             margin-bottom: 15px;
             display: none;
+            padding: 8px 12px;
+            background: #ffebee;
+            border-radius: 4px;
+            border-left: 3px solid #d32f2f;
         }
 
         .error-message.show {
             display: block;
+        }
+
+        .form-section {
+            margin-bottom: 20px;
+        }
+
+        .form-section:last-of-type {
+            margin-bottom: 0;
         }
     </style>
 </head>
@@ -144,31 +202,56 @@
 
         <form method="POST" action="/payment" id="certForm">
 
-            <label>Hall Ticket Number:</label>
-            <input type="text" id="hallticketno" name="hallticketno" required>
-            <div class="error-message" id="hallticketError"></div>
-
-            <label>Select Certificates:</label>
-            <div class="checkbox-group">
-                <div class="checkbox-column">
-                    <label><input type="checkbox" name="cert_types" value="Bonafide"> Bonafide Certificate</label>
-                    <label><input type="checkbox" name="cert_types" value="Course Completion"> Course Completion</label>
-                    <label><input type="checkbox" name="cert_types" value="Custodium"> Custodium Certificate</label>
-                </div>
-                <div class="checkbox-column">
-                    <label><input type="checkbox" name="cert_types" value="Bonafide (scholarship purpose)"> Bonafide
-                        (Scholarship)</label>
-                    <label><input type="checkbox" name="cert_types" value="Fee details for IT purpose"> Fee Details
-                        (IT)</label>
-                    <label><input type="checkbox" name="cert_types" value="Fee structure for bank loan"> Fee Structure
-                        (Loan)</label>
-                </div>
+            <div class="form-section">
+                <label>Hall Ticket Number:</label>
+                <input type="text" id="hallticketno" name="hallticketno" required
+                    placeholder="Enter your hall ticket number">
+                <div class="error-message" id="hallticketError"></div>
             </div>
-            <div class="error-message" id="certError"></div>
 
-            <div id="purposeDiv" style="display:none;">
-                <label>Purpose (Custodium):</label>
-                <input type="text" id="purpose" name="purpose">
+            <div class="form-section">
+                <label>Select Certificates:</label>
+                <div class="checkbox-group">
+                    <div class="checkbox-column">
+                        <label>
+                            <input type="checkbox" name="cert_types" value="Bonafide">
+                            <span>Bonafide Certificate</span>
+                        </label>
+                        <label>
+                            <input type="checkbox" name="cert_types" value="Course Completion">
+                            <span>Course Completion</span>
+                        </label>
+                        <label>
+                            <input type="checkbox" name="cert_types" value="Custodium">
+                            <span>Custodium Certificate</span>
+                        </label>
+                    </div>
+                    <div class="checkbox-column">
+                        <label>
+                            <input type="checkbox" name="cert_types" value="NOC Certificate">
+                            <span>NOC Certificate</span>
+                        </label>
+                        <label>
+                            <input type="checkbox" name="cert_types" value="Fee details for IT purpose">
+                            <span>Fee Details (IT)</span>
+                        </label>
+                        <label>
+                            <input type="checkbox" name="cert_types" value="Fee structure for bank loan">
+                            <span>Fee Structure (Loan)</span>
+                        </label>
+                    </div>
+                </div>
+                <div class="error-message" id="certError"></div>
+            </div>
+
+            <div id="purposeDiv" class="purpose-field" style="display:none;">
+                <label>Purpose for Custodium Certificate:</label>
+                <input type="text" id="purpose" name="purpose" placeholder="Enter purpose (e.g., Passport application)">
+            </div>
+
+            <div id="nocpurposeDiv" class="purpose-field" style="display:none;">
+                <label>Purpose for NOC Certificate:</label>
+                <input type="text" id="nocpurpose" name="nocpurpose" placeholder="Enter purpose (e.g., Higher studies)">
             </div>
 
             <button type="submit">Proceed to Payment</button>
@@ -189,22 +272,33 @@
             const certCheckboxes = document.querySelectorAll('input[name="cert_types"]');
             const purposeInput = document.getElementById("purpose");
             const purposeDiv = document.getElementById("purposeDiv");
+            const nocpurposeInput = document.getElementById("nocpurpose");
+            const nocpurposeDiv = document.getElementById("nocpurposeDiv");
             const hallticketError = document.getElementById("hallticketError");
             const certError = document.getElementById("certError");
 
             console.log("JS loaded"); // 🔍 debug
 
-            // Show/hide purpose field based on Custodium selection
+            // Show/hide purpose fields based on certificate selection
             certCheckboxes.forEach(checkbox => {
                 checkbox.addEventListener("change", function () {
                     const custodiumChecked = Array.from(certCheckboxes)
                         .some(cb => cb.checked && cb.value === "Custodium");
+                    const nocChecked = Array.from(certCheckboxes)
+                        .some(cb => cb.checked && cb.value === "NOC Certificate");
 
                     if (custodiumChecked) {
                         purposeDiv.style.display = "block";
                     } else {
                         purposeDiv.style.display = "none";
                         purposeInput.value = "";
+                    }
+
+                    if (nocChecked) {
+                        nocpurposeDiv.style.display = "block";
+                    } else {
+                        nocpurposeDiv.style.display = "none";
+                        nocpurposeInput.value = "";
                     }
                 });
             });
@@ -255,6 +349,16 @@
                 if (selectedCerts.includes("Custodium") && !purpose) {
                     certError.textContent = "⚠️ Purpose is required for Custodium certificate!";
                     certError.classList.add("show");
+                    purposeInput.focus();
+                    return;
+                }
+
+                // Get nocpurpose if NOC Certificate is selected
+                const nocpurpose = nocpurposeInput ? nocpurposeInput.value.trim() : "";
+                if (selectedCerts.includes("NOC Certificate") && !nocpurpose) {
+                    certError.textContent = "⚠️ Purpose is required for NOC Certificate!";
+                    certError.classList.add("show");
+                    nocpurposeInput.focus();
                     return;
                 }
 
@@ -279,7 +383,7 @@
                     const eligibilityMap = {
                         "STUDYING": [
                             "Bonafide",
-                            "Bonafide (scholarship purpose)",
+                            "NOC Certificate",
                             "Fee details for IT purpose",
                             "Fee structure for bank loan",
                             "Custodium"

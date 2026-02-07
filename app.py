@@ -363,16 +363,18 @@ with app.app_context():
     db.create_all()
 
 # Certificate eligibility
-def is_cert_eligible(cert_type: str, status: str, purpose: str) -> bool:
+def is_cert_eligible(cert_type: str, status: str, purpose: str = "", nocpurpose: str = "") -> bool:
     if status is None:
         return False
     s = str(status).strip().upper()
     cert = cert_type.strip()
     if s == "STUDYING":
-        if cert in ("Bonafide", "Bonafide (scholarship purpose)", "Fee details for IT purpose", "Fee structure for bank loan"):
+        if cert in ("Bonafide", "Fee details for IT purpose", "Fee structure for bank loan"):
             return True
         if cert == "Custodium":
             return bool(str(purpose or "").strip())
+        if cert == "NOC Certificate":
+            return bool(str(nocpurpose or "").strip())
         return False
     elif s in ("COMPLETED", "PASSOUT"):
         return cert in ("Bonafide", "Course Completion")
@@ -511,10 +513,10 @@ def download_all():
         status = str(student_row.get("STATUS", "")).strip().upper()
 
         for cert_type in cert_types:
-            if not is_cert_eligible(cert_type, status, purpose="Admin Bulk Download"):
+            if not is_cert_eligible(cert_type, status, purpose="Admin Bulk Download", nocpurpose=""):
                 continue
 
-            buf = create_certificate(cert_type, student_df, hallticketno, purpose="Admin Bulk Download")
+            buf = create_certificate(cert_type, student_df, hallticketno, purpose="Admin Bulk Download", nocpurpose="")
             if not buf:
                 continue
 
@@ -736,6 +738,7 @@ def payment_page():
         cert_types = session.get("cert_types", [])
         hallticketno = session.get("hallticketno")
         purpose = session.get("purpose", "")
+        nocpurpose = session.get("nocpurpose", "")
         if not hallticketno or not cert_types:
             return redirect(url_for("home"))
         student = students.loc[students["HALLTICKET"] == hallticketno]
@@ -744,21 +747,32 @@ def payment_page():
             return redirect(url_for("home"))
         amount_per_cert = 100
         total_amount = len(cert_types) * amount_per_cert
-        return render_template("payment.html", cert_types=cert_types, hallticketno=hallticketno, purpose=purpose, total_amount=total_amount)
+        return render_template("payment.html", cert_types=cert_types, hallticketno=hallticketno, purpose=purpose, nocpurpose=nocpurpose, total_amount=total_amount)
 
     # POST request
     cert_types = request.form.getlist("cert_types")
     hallticketno = request.form.get("hallticketno", "").strip().upper()
     purpose = request.form.get("purpose", "").strip()
-    if not hallticketno or not cert_types or ("Custodium" in cert_types and not purpose):
+    nocpurpose = request.form.get("nocpurpose", "").strip()
+
+    if not hallticketno or not cert_types:
         flash("❌ Please fill required fields.", "warning")
         return redirect(url_for("home"))
+    
+    if "Custodium" in cert_types and not purpose:
+        flash("❌ Purpose is required for Custodium certificate.", "warning")
+        return redirect(url_for("home"))
+    
+    if "NOC Certificate" in cert_types and not nocpurpose:
+        flash("❌ Purpose is required for NOC Certificate.", "warning")
+        return redirect(url_for("home"))
+    
     student = students.loc[students["HALLTICKET"] == hallticketno]
     if student.empty:
         flash("❌ Invalid Hall Ticket Number", "danger")
         return redirect(url_for("home"))
     status = str(student["STATUS"].values[0]).strip().upper()
-    eligible_certs = [cert for cert in cert_types if is_cert_eligible(cert, status, purpose)]
+    eligible_certs = [cert for cert in cert_types if is_cert_eligible(cert, status, purpose, nocpurpose)]
     if not eligible_certs:
         flash("❌ None of the selected certificates are eligible for this student.", "danger")
         return redirect(url_for("home"))
@@ -766,6 +780,8 @@ def payment_page():
     session["cert_types"] = eligible_certs
     session["hallticketno"] = hallticketno
     session["purpose"] = purpose
+    session["nocpurpose"] = nocpurpose
+
     return redirect(url_for("payment_page"))
 
 @app.route("/verify_payment", methods=["POST"])
@@ -773,7 +789,8 @@ def verify_payment():
     cert_types = session.get("cert_types", [])
     hallticketno = session.get("hallticketno")
     purpose = session.get("purpose", "")
-    
+    nocpurpose = session.get("nocpurpose", "")
+
 
     transaction_id = request.form.get("transaction_id", "").strip()
     proof_file = request.files.get("payment_proof")
@@ -796,7 +813,7 @@ def verify_payment():
     # Generate certificates
     generated = []
     for cert_type in cert_types:
-        buf = create_certificate(cert_type, student, hallticketno, purpose)
+        buf = create_certificate(cert_type, student, hallticketno, purpose, nocpurpose)
         if buf:
             generated.append((cert_type, buf))
 
@@ -846,6 +863,7 @@ def verify_payment():
     session.pop("cert_types", None)
     session.pop("hallticketno", None)
     session.pop("purpose", None)
+    session.pop("nocpurpose", None)
 
     # Send files
     if len(generated) == 1:
@@ -989,7 +1007,7 @@ def upload_edited_csv():
 
 
 # ----------------- Certificate Creation ----------------- #
-def create_certificate(cert_type, student, hallticketno, purpose=""):
+def create_certificate(cert_type, student, hallticketno, purpose="", nocpurpose=""):
     """
     Generate PDF for a student with caching.
     Original PDF content preserved as in your code.
@@ -998,7 +1016,13 @@ def create_certificate(cert_type, student, hallticketno, purpose=""):
     # ========== CACHING LOGIC (NEW) ==========
     # Create unique filename based on cert type and hall ticket
     safe_cert_type = cert_type.replace(" ", "_").replace("/", "_")
-    cache_filename = f"{hallticketno}_{safe_cert_type}.pdf"
+    
+    if nocpurpose and cert_type == "NOC Certificate":
+        safe_nocpurpose = nocpurpose[:20].replace(" ", "_")
+        cache_filename = f"{hallticketno}_{safe_cert_type}_{safe_nocpurpose}.pdf"
+    else:
+        cache_filename = f"{hallticketno}_{safe_cert_type}.pdf"
+    
     cache_filepath = os.path.join(CERT_CACHE_DIR, cache_filename)
     
     # If already cached, return it immediately
@@ -1130,80 +1154,56 @@ def create_certificate(cert_type, student, hallticketno, purpose=""):
         flow.append(Spacer(1, 20))
 
         
-    elif cert_type == "Bonafide (scholarship purpose)":
-        flow.append(Paragraph("<b>BONAFIDE CERTIFICATE</b>", styles["CenterTitle"]))
-        flow.append(Spacer(1, 20))
-        text = (
-            f"This is to certify that Ms.<b>{html.escape(str(name))}</b>, "
-            f"D/o <b>{html.escape(str(parent_name))}</b>, "
-            f"bearing Hall Ticket No. <b>{html.escape(str(hallticketno))}</b>, "
-            f"studying (year & branch) <b>{html.escape(str(year))} {html.escape(str(branch))}</b> "
-            f"during the academic year <b>{html.escape(str(academic_year))}</b>. "
-            f"R/O <b>{html.escape(str(hsno))}</b> "
-            f"belonging to village <b>{html.escape(str(village))}</b> "
-            f"located at a distance of <b>{html.escape(str(distance))}</b> KM from the college, "
-            f"Mandal <b>{html.escape(str(mandal))}</b> "
-            f"District <b>{html.escape(str(district))}</b>. "
-            f"She belongs to <b>{html.escape(str(caste))}</b> caste "
-            f"<b>{html.escape(str(sub_caste))}</b> Sub Caste.<br/><br/>"
-            "The tuition fee may remitted to the College Bank Account Number 30957508604 "
-            "Bank State Bank Of India, Hanamkonda Branch."
+    elif cert_type == "NOC Certificate":
+        # Letter Header - From Section
+        from_style = ParagraphStyle(
+            name="FromStyle",
+            fontName="Helvetica",
+            fontSize=11,
+            leading=14,
+            textColor=colors.black,
+            alignment=0  # left-aligned
         )
-        flow.append(Paragraph(text, styles["Justify"]))
-        flow.append(Spacer(1, 6*cm))
-
-# Define style for signature block
-        signature_style = ParagraphStyle(
-            name="SignatureStyle",
-            fontName="Helvetica",
-            fontSize=11,
-            leading=14,       # line spacing to prevent descenders from being cut
-            textColor=colors.black,
-            alignment=2       # 2 = right-aligned
-    )
-
-# Combine all lines into one string with <br/> for line breaks
-        signature_text = (
-            "Signature & Name of Principal<br/>"
-            "of the Educational Institution<br/>"
-            "(with seal)<br/>"
-            "Tel.No.: 0870 - 2818302"
-    )
-
-# Indent from left so text is not touching right border (adjust left=12*cm as needed)
-        flow.append(Indenter(left=10*cm))
-        flow.append(Paragraph(signature_text, signature_style))
-        flow.append(Indenter(left=-10*cm))
-        flow.append(Spacer(1, 24))
-        flow.append(PageBreak())
-        flow.append(Paragraph("<b>BONAFIDE CERTIFICATE</b>", styles["CenterTitle"]))
+        
+        flow.append(Paragraph("<b>From</b>", from_style))
+        flow.append(Paragraph(f"<b>{html.escape(str(name))}</b>", from_style))
+        flow.append(Paragraph(f"Hallticket no : <b>{html.escape(str(hallticketno))}</b>", from_style))
+        flow.append(Paragraph(f"<b>{html.escape(str(branch))}</b> <b>{html.escape(str(year))}</b>", from_style))
+        flow.append(Paragraph("Sumathi Reddy Institute Of Technology For Women", from_style))
+        flow.append(Paragraph("Ananthsagar ,mandal, Hasanparthy, Telangana 506371", from_style))
         flow.append(Spacer(1, 20))
-        flow.append(Paragraph(text, styles["Justify"]))
-        flow.append(Spacer(1, 6*cm))
-
-# Define style for signature block
-        signature_style = ParagraphStyle(
-            name="SignatureStyle",
-            fontName="Helvetica",
-            fontSize=11,
-            leading=14,       # line spacing to prevent descenders from being cut
-            textColor=colors.black,
-            alignment=2       # 2 = right-aligned
-    )
-
-# Combine all lines into one string with <br/> for line breaks
-        signature_text = (
-            "Signature & Name of Principal<br/>"
-            "of the Educational Institution<br/>"
-            "(with seal)<br/>"
-            "Tel.No.: 0870 - 2818302"
-    )
-
-# Indent from left so text is not touching right border (adjust left=12*cm as needed)
-        flow.append(Indenter(left=10*cm))
-        flow.append(Paragraph(signature_text, signature_style))
-        flow.append(Indenter(left=-10*cm))
-
+        
+        # To Section
+        flow.append(Paragraph("<b>To</b>", from_style))
+        flow.append(Paragraph("The Principal", from_style))
+        flow.append(Paragraph("Sumathi Reddy Institute Of Technology For Women", from_style))
+        flow.append(Paragraph("Ananthsagar ,mandal, Hasanparthy, Telangana 506371", from_style))
+        flow.append(Spacer(1, 20))
+        
+        # Subject
+        flow.append(Paragraph("<b>Subject: Request for issuance of No Objection Certificate (NOC)</b>", from_style))
+        flow.append(Spacer(1, 20))
+        
+        # Letter Body
+        body_text = (
+            f"Respected Madam,<br/><br/>"
+            f"I am <b>{html.escape(str(name))}</b>, a student of <b>{html.escape(str(branch))}</b> "
+            f"<b>{html.escape(str(year))}</b> bearing Hallticket No: <b>{html.escape(str(hallticketno))}</b> of Sumathi Reddy Institute Of Technology For Women. "
+            f"I am writing this letter to kindly request the issuance of a No Objection Certificate (NOC) from the college.<br/><br/>"
+            f"I require the NOC for the purpose of <b>{html.escape(str(nocpurpose))}</b>.<br/><br/>"
+            f"I kindly request you to consider my application and issue the No Objection Certificate at the earliest.<br/><br/>"
+            f"Thanking you."
+        )
+        flow.append(Paragraph(body_text, styles["Normal"]))
+        
+        # Closing
+        closing_text = (
+            f"Yours sincerely,<br/>"
+            f"<b>{html.escape(str(name))}</b><br/>"
+            f"Hallticket No : <b>{html.escape(str(hallticketno))}</b><br/>"
+            f"Branch & Year: <b>{html.escape(str(branch))}</b>_<b>{html.escape(str(year))}</b>"
+        )
+        flow.append(Paragraph(closing_text, from_style))
         flow.append(Spacer(1, 24))
 
     elif cert_type == "Course Completion":
